@@ -1,0 +1,31 @@
+services:
+  homepage-gui:
+    # Pull the published image, or build locally with `docker compose up --build`.
+    image: ${IMAGE:-viibeware/homepage-gui:latest}
+    build: .
+    container_name: homepage-gui
+    restart: unless-stopped
+    # Run as root so it can write the (often root-owned) services.yaml in the
+    # Homepage config directory. Override with a PUID/PGID-style user if desired.
+    user: "0:0"
+    environment:
+      - HOMEPAGE_CONFIG_DIR=/config
+      # Backups are kept inside the config dir but in a dot-folder Homepage ignores.
+      - BACKUP_DIR=/config/.homepage-gui-backups
+      - KEEP_BACKUPS=40
+      # Backups older than this many days are auto-purged (0 = keep forever).
+      - KEEP_BACKUP_DAYS=14
+      # Custom icon uploads land here (also mounted into Homepage at /app/public/icons).
+      - ICONS_DIR=/icons
+      # Container restarted (via the Docker socket) so Homepage serves new icons.
+      - HOMEPAGE_CONTAINER=${HOMEPAGE_CONTAINER:-homepage}
+    ports:
+      # LAN access: http://<host>:${HOST_PORT}
+      - "${HOST_PORT:-5005}:5000"
+    volumes:
+      # Mount your live Homepage config so edits land on the real services.yaml.
+      - ${HOMEPAGE_CONFIG_DIR:-./config}:/config
+      # Shared custom-icons dir (the same host folder Homepage serves at /icons).
+      - ${HOMEPAGE_ICONS_DIR:-./icons}:/icons
+      # Lets the GUI restart Homepage so newly-uploaded icons are picked up.
+      - /var/run/docker.sock:/var/run/docker.sock

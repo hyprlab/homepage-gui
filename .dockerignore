@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.git
+.gitignore
+.gitattributes
+*.md
+.venv/
+venv/
+node_modules/
+temp/
+.env
+.env.example
+.github/
+LICENSE

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Homepage GUI</title>
+  <link rel="icon" type="image/png" href="{{ static_url('img/favicon.png') }}" />
+  <link rel="apple-touch-icon" href="{{ static_url('img/apple-touch-icon.png') }}" />
+  <link rel="preconnect" href="https://api.iconify.design" crossorigin />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="stylesheet" href="{{ static_url('css/style.css') }}" />
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" defer></script>
+  <script src="{{ static_url('js/app.js') }}" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-mark" src="{{ static_url('img/logo.png') }}" alt="Homepage GUI logo" />
+      <div class="brand-text">
+        <h1>Homepage GUI</h1>
+        <span class="path" id="cfgPath" title="{{ services_path }}">{{ services_path }}</span>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="dirtyBadge" class="badge hidden">Unsaved changes</span>
+      <button class="btn ghost" id="reloadBtn" title="Reload from disk">↻ Reload</button>
+      <button class="btn ghost" id="previewBtn" title="Preview YAML">⟨/⟩ Preview</button>
+      <button class="btn ghost" id="backupsBtn" title="Backups">⤓ Backups</button>
+      <button class="btn primary" id="saveBtn" title="Save (Ctrl+S)">💾 Save</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-head">
+          <span>Add blocks</span>
+        </div>
+        <p class="hint">Drag onto the canvas, or click to append.</p>
+        <div id="palette" class="palette">
+          <div class="palette-block" data-kind="service" draggable="false">
+            <span class="pb-icon">🔗</span>
+            <div><strong>Service</strong><small>A link / app tile</small></div>
+          </div>
+          <div class="palette-block" data-kind="group" draggable="false">
+            <span class="pb-icon">🗂️</span>
+            <div><strong>Section</strong><small>A group of services</small></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section grow">
+        <div class="sidebar-head">
+          <span>Sections</span>
+          <button class="icon-btn" id="addGroupBtn" title="Add section">＋</button>
+        </div>
+        <input type="search" id="navFilter" class="filter" placeholder="Filter sections / services…" />
+        <ul id="sectionNav" class="section-nav"></ul>
+      </div>
+
+      <div class="sidebar-foot">
+        <button class="btn ghost sidebar-btn" id="restartHomepageBtn" title="Restart Homepage so it serves newly-uploaded icons">↻ Restart Homepage</button>
+        <span id="statTotals" class="muted"></span>
+        <div class="app-credit">
+          Homepage GUI v{{ app_version }} · AGPLv3 ·
+          <a href="{{ source_url }}" target="_blank" rel="noopener">Source</a>
+        </div>
+      </div>
+    </aside>
+
+    <main class="canvas" id="canvas">
+      <div id="groups" class="groups"></div>
+      <div id="emptyState" class="empty-state hidden">
+        <p>No sections yet.</p>
+        <button class="btn primary" id="emptyAddBtn">＋ Add your first section</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- Service editor drawer -->
+  <div class="drawer-overlay hidden" id="editorOverlay">
+    <aside class="drawer" id="editorDrawer" role="dialog" aria-modal="true">
+      <div class="drawer-head">
+        <h2 id="editorTitle">Edit service</h2>
+        <button class="icon-btn" id="editorClose" title="Close">✕</button>
+      </div>
+      <div class="drawer-body">
+        <label class="field">
+          <span>Name</span>
+          <input type="text" id="f_name" autocomplete="off" />
+        </label>
+
+        <label class="field">
+          <span>Icon</span>
+          <div class="icon-field">
+            <button type="button" class="icon-preview-btn" id="iconPickBtn" title="Choose icon">
+              <img id="iconPreview" alt="" />
+              <span id="iconPreviewFallback" class="icon-fallback">?</span>
+            </button>
+            <input type="text" id="f_icon" placeholder="e.g. mdi-server-#104ce9 or plex.svg" autocomplete="off" />
+            <button type="button" class="btn ghost sm" id="iconClearBtn">Clear</button>
+          </div>
+        </label>
+
+        <div class="field icon-color-field" id="iconColorField">
+          <span>Icon color</span>
+          <div class="icon-color-row">
+            <label class="color-toggle">
+              <input type="checkbox" id="f_icon_usecolor" />
+              <span>Custom color</span>
+            </label>
+            <input type="color" id="f_icon_color" value="#3b82f6" disabled />
+            <code class="color-val" id="iconColorVal"></code>
+            <span class="color-hint" id="iconColorHint"></span>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>URL (href)</span>
+          <input type="text" id="f_href" placeholder="https://…" autocomplete="off" />
+        </label>
+
+        <label class="field">
+          <span>Description</span>
+          <input type="text" id="f_description" autocomplete="off" />
+        </label>
+
+        <label class="field">
+          <span>Ping</span>
+          <input type="text" id="f_ping" placeholder="host or IP for status check" autocomplete="off" />
+        </label>
+
+        <details class="advanced">
+          <summary>Advanced fields (widgets, server, container…)</summary>
+          <p class="hint">Any extra keys, edited as YAML. Common fields above are kept separately.</p>
+          <textarea id="f_advanced" spellcheck="false" rows="8" placeholder="widget:&#10;  type: ..."></textarea>
+          <div class="adv-error" id="advError"></div>
+        </details>
+      </div>
+      <div class="drawer-foot">
+        <button class="btn danger ghost" id="editorDelete">Delete</button>
+        <div class="spacer"></div>
+        <button class="btn ghost" id="editorCancel">Cancel</button>
+        <button class="btn primary" id="editorApply">Apply</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Icon chooser modal -->
+  <div class="modal-overlay hidden" id="iconOverlay">
+    <div class="modal icon-modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2>Choose an icon</h2>
+        <button class="icon-btn" id="iconModalClose" title="Close">✕</button>
+      </div>
+      <div class="icon-tabs" id="iconTabs">
+        <button class="tab active" data-src="all">All sources</button>
+        <button class="tab" data-src="dashboard">Dashboard Icons</button>
+        <button class="tab" data-src="mdi">Material (MDI)</button>
+        <button class="tab" data-src="fa">Font Awesome</button>
+        <button class="tab" data-src="svg">SVG / freesvgicons</button>
+        <button class="tab" data-src="uploads">My Uploads</button>
+      </div>
+      <div class="icon-controls">
+        <input type="search" id="iconSearch" class="filter" placeholder="Search icons…" />
+        <div class="mdi-color hidden" id="mdiColorWrap">
+          <label>Color</label>
+          <input type="color" id="mdiColor" value="#3b82f6" />
+          <button class="btn ghost sm" id="mdiColorNone">None</button>
+        </div>
+        <a class="ext-link hidden" id="freesvgLink" href="https://freesvgicons.com/" target="_blank" rel="noopener">freesvgicons.com ↗</a>
+        <div class="upload-controls hidden" id="uploadControls">
+          <input type="file" id="iconUpload" accept=".png,.svg,image/png,image/svg+xml" multiple hidden />
+          <button class="btn primary sm" id="iconUploadBtn">⤓ Upload PNG / SVG</button>
+          <span class="hint" style="margin:0">Restart Homepage from the sidebar to apply new icons.</span>
+        </div>
+      </div>
+      <div class="icon-results" id="iconResults"></div>
+      <div class="icon-status" id="iconStatus"></div>
+    </div>
+  </div>
+
+  <!-- Preview / Backups modal (generic) -->
+  <div class="modal-overlay hidden" id="genericOverlay">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="genericTitle">Preview</h2>
+        <button class="icon-btn" id="genericClose" title="Close">✕</button>
+      </div>
+      <div class="modal-body" id="genericBody"></div>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts"></div>
+
+  <template id="groupTpl">
+    <section class="group" data-gid="">
+      <div class="group-head">
+        <span class="drag-handle group-drag" title="Drag to reorder section">⠿</span>
+        <input class="group-name" type="text" />
+        <span class="count-pill"></span>
+        <div class="group-actions">
+          <button class="icon-btn sort-group" title="Sort services A–Z">⇅</button>
+          <button class="icon-btn add-service" title="Add service">＋</button>
+          <button class="icon-btn del-group" title="Delete section">🗑</button>
+        </div>
+      </div>
+      <div class="service-list"></div>
+    </section>
+  </template>
+
+  <template id="serviceTpl">
+    <div class="service-card" data-sid="">
+      <span class="drag-handle" title="Drag to move">⠿</span>
+      <div class="svc-icon"><img alt="" /><span class="icon-fallback">?</span></div>
+      <div class="svc-main">
+        <div class="svc-name"></div>
+        <div class="svc-sub"></div>
+      </div>
+      <div class="svc-actions">
+        <button class="icon-btn edit-svc" title="Edit">✎</button>
+        <button class="icon-btn del-svc" title="Delete">🗑</button>
+      </div>
+    </div>
+  </template>
+</body>
+</html>
