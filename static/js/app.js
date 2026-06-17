@@ -1019,6 +1019,54 @@
     }
   }
 
+  // ---- Changelog / release notes ----
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function renderInline(s) {
+    s = escapeHtml(s);
+    s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(
+      /\[([^\]]+)\]\((https?:[^)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener">$1</a>'
+    );
+    return s;
+  }
+  // Minimal Markdown → HTML for the subset used in CHANGELOG.md.
+  function renderMarkdown(md) {
+    const out = [];
+    let inList = false;
+    const closeList = () => { if (inList) { out.push("</ul>"); inList = false; } };
+    for (const raw of md.split("\n")) {
+      const line = raw.replace(/\s+$/, "");
+      if (/^\[[^\]]+\]:\s*https?:/i.test(line)) continue; // link reference defs
+      let m;
+      if ((m = line.match(/^#\s+(.*)/))) { closeList(); out.push(`<h1>${renderInline(m[1])}</h1>`); }
+      else if ((m = line.match(/^##\s+(.*)/))) { closeList(); out.push(`<h2>${renderInline(m[1])}</h2>`); }
+      else if ((m = line.match(/^###\s+(.*)/))) { closeList(); out.push(`<h3>${renderInline(m[1])}</h3>`); }
+      else if ((m = line.match(/^\s*[-*]\s+(.*)/))) {
+        if (!inList) { out.push("<ul>"); inList = true; }
+        out.push(`<li>${renderInline(m[1])}</li>`);
+      } else if (line.trim() === "") { closeList(); }
+      else { closeList(); out.push(`<p>${renderInline(line)}</p>`); }
+    }
+    closeList();
+    return out.join("\n");
+  }
+
+  async function showChangelog() {
+    try {
+      const res = await fetch("/api/changelog");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load");
+      openGeneric("Release notes", `<div class="changelog"></div>`);
+      $("#genericBody .changelog").innerHTML = renderMarkdown(data.markdown || "");
+    } catch (e) {
+      toast("Changelog error: " + e.message, "err");
+    }
+  }
+
   // ---- Generic modal ----
   function openGeneric(title, innerHtml) {
     $("#genericTitle").textContent = title;
@@ -1131,6 +1179,7 @@
       e.target.value = "";
     });
     $("#restartHomepageBtn").addEventListener("click", restartHomepage);
+    $("#changelogBtn").addEventListener("click", showChangelog);
     // Drag-and-drop upload onto the results area while on the Uploads tab.
     const results = $("#iconResults");
     results.addEventListener("dragover", (e) => {

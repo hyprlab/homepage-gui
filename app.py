@@ -28,10 +28,14 @@ BACKUP_DIR = os.environ.get(
 KEEP_BACKUPS = int(os.environ.get("KEEP_BACKUPS", "40"))
 KEEP_BACKUP_DAYS = int(os.environ.get("KEEP_BACKUP_DAYS", "14"))
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 # Public source location (AGPL §13). Override if you run a modified version so
 # your network users can reach *your* corresponding source.
 SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/viibeware/homepage-gui")
+# Single source of truth for release notes, shown in-app and on GitHub.
+CHANGELOG_PATH = os.environ.get(
+    "CHANGELOG_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "CHANGELOG.md")
+)
 
 # Custom icons: written here, mounted into Homepage at /app/public/icons and
 # referenced in services.yaml as /icons/<file>.
@@ -113,6 +117,16 @@ def index():
         app_version=APP_VERSION,
         source_url=SOURCE_URL,
     )
+
+
+@app.route("/api/changelog")
+def changelog():
+    try:
+        with open(CHANGELOG_PATH, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        text = "# Changelog\n\nRelease notes are unavailable."
+    return jsonify({"version": APP_VERSION, "source_url": SOURCE_URL, "markdown": text})
 
 
 @app.route("/api/health")

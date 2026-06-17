@@ -4,6 +4,7 @@ __pycache__/
 .gitignore
 .gitattributes
 *.md
+!CHANGELOG.md
 .venv/
 venv/
 node_modules/

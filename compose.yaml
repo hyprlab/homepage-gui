@@ -24,8 +24,8 @@ services:
       - "${HOST_PORT:-5005}:5000"
     volumes:
       # Mount your live Homepage config so edits land on the real services.yaml.
-      - ${HOMEPAGE_CONFIG_DIR:-./config}:/config
+      - ${HOST_CONFIG_DIR:-./config}:/config
       # Shared custom-icons dir (the same host folder Homepage serves at /icons).
-      - ${HOMEPAGE_ICONS_DIR:-./icons}:/icons
+      - ${HOST_ICONS_DIR:-./icons}:/icons
       # Lets the GUI restart Homepage so newly-uploaded icons are picked up.
       - /var/run/docker.sock:/var/run/docker.sock
