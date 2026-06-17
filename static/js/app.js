@@ -640,7 +640,9 @@
   let activeIconSrc = "all";
   let dashboardList = null;
   let mdiColor = "#3b82f6";
-  let mdiUseColor = true;
+  // Color is opt-in: leave it off so picks carry no color suffix and Homepage
+  // renders its default gradient. Only set when the user ticks "Apply color".
+  let mdiUseColor = false;
   let searchSeq = 0;
 
   function openIconPicker() {
@@ -1161,15 +1163,14 @@
       t.addEventListener("click", () => setIconSrc(t.dataset.src))
     );
     $("#iconSearch").addEventListener("input", scheduleIconSearch);
-    $("#mdiColor").addEventListener("input", (e) => {
-      mdiColor = e.target.value;
-      mdiUseColor = true;
+    $("#mdiColorOn").addEventListener("change", (e) => {
+      mdiUseColor = e.target.checked;
+      $("#mdiColor").disabled = !mdiUseColor;
       runIconSearch();
     });
-    $("#mdiColorNone").addEventListener("click", () => {
-      mdiUseColor = !mdiUseColor;
-      $("#mdiColorNone").textContent = mdiUseColor ? "None" : "Color";
-      runIconSearch();
+    $("#mdiColor").addEventListener("input", (e) => {
+      mdiColor = e.target.value;
+      if (mdiUseColor) runIconSearch();
     });
 
     // Uploads

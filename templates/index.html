@@ -165,9 +165,8 @@
       <div class="icon-controls">
         <input type="search" id="iconSearch" class="filter" placeholder="Search icons…" />
         <div class="mdi-color hidden" id="mdiColorWrap">
-          <label>Color</label>
-          <input type="color" id="mdiColor" value="#3b82f6" />
-          <button class="btn ghost sm" id="mdiColorNone">None</button>
+          <label class="color-toggle"><input type="checkbox" id="mdiColorOn" /> <span>Apply color</span></label>
+          <input type="color" id="mdiColor" value="#3b82f6" disabled />
         </div>
         <a class="ext-link hidden" id="freesvgLink" href="https://freesvgicons.com/" target="_blank" rel="noopener">freesvgicons.com ↗</a>
         <div class="upload-controls hidden" id="uploadControls">

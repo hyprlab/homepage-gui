@@ -9,6 +9,18 @@ GitHub and inside the app (click the version in the sidebar footer → **What's 
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-06-17
+
+### Fixed
+- Icon color is now **opt-in** in the chooser. A default color was previously baked into
+  every MDI / Simple Icons / SVG selection, overriding Homepage's default icon gradient.
+  Selections now omit color unless **Apply color** is ticked, so `services.yaml` entries
+  carry no color suffix/parameter when none is chosen.
+
+### Changed
+- Replaced the chooser's "None" color toggle with a clearer **Apply color** checkbox
+  (unchecked by default).
+
 ## [1.1.0] - 2026-06-17
 
 ### Added
@@ -48,6 +60,7 @@ Initial public release.
 - Self-hosted **Inter** font, cache-busted static assets, and an in-app **Source** link
   (AGPL §13).
 
-[Unreleased]: https://github.com/viibeware/homepage-gui/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/viibeware/homepage-gui/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/viibeware/homepage-gui/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/viibeware/homepage-gui/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/viibeware/homepage-gui/releases/tag/v1.0.0
