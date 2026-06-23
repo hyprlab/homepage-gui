@@ -9,6 +9,17 @@ GitHub and inside the app (click the version in the sidebar footer → **What's 
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-06-23
+
+### Fixed
+- Section **item-count pills** no longer wrap their label into a vertical stack when the
+  section header is tight on space. The pill now stays on a single line and keeps its
+  width in the flex header.
+
+### Changed
+- Slightly increased the vertical padding on the count pill so it reads as a proper pill
+  rather than a thin sliver.
+
 ## [1.1.1] - 2026-06-17
 
 ### Fixed
@@ -60,7 +71,8 @@ Initial public release.
 - Self-hosted **Inter** font, cache-busted static assets, and an in-app **Source** link
   (AGPL §13).
 
-[Unreleased]: https://github.com/viibeware/homepage-gui/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/viibeware/homepage-gui/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/viibeware/homepage-gui/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/viibeware/homepage-gui/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/viibeware/homepage-gui/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/viibeware/homepage-gui/releases/tag/v1.0.0
