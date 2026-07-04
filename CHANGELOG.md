@@ -9,6 +9,14 @@ GitHub and inside the app (click the version in the sidebar footer → **What's 
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-04
+
+### Changed
+- Project moved to the **Hyprlab** organisation. All GitHub, Docker Hub, and in-app
+  **Source** references now point to `hyprlab/homepage-gui`, and every remaining
+  mention of the old name has been replaced with Hyprlab.
+- Version reset to `0.1.3` under the new home.
+
 ## [1.1.2] - 2026-06-23
 
 ### Fixed
@@ -71,8 +79,9 @@ Initial public release.
 - Self-hosted **Inter** font, cache-busted static assets, and an in-app **Source** link
   (AGPL §13).
 
-[Unreleased]: https://github.com/viibeware/homepage-gui/compare/v1.1.2...HEAD
-[1.1.2]: https://github.com/viibeware/homepage-gui/compare/v1.1.1...v1.1.2
-[1.1.1]: https://github.com/viibeware/homepage-gui/compare/v1.1.0...v1.1.1
-[1.1.0]: https://github.com/viibeware/homepage-gui/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/viibeware/homepage-gui/releases/tag/v1.0.0
+[Unreleased]: https://github.com/hyprlab/homepage-gui/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/hyprlab/homepage-gui/compare/v1.1.2...v0.1.3
+[1.1.2]: https://github.com/hyprlab/homepage-gui/compare/v1.1.1...v1.1.2
+[1.1.1]: https://github.com/hyprlab/homepage-gui/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/hyprlab/homepage-gui/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/hyprlab/homepage-gui/releases/tag/v1.0.0

@@ -1,7 +1,7 @@
 services:
   homepage-gui:
     # Pull the published image, or build locally with `docker compose up --build`.
-    image: ${IMAGE:-viibeware/homepage-gui:latest}
+    image: ${IMAGE:-hyprlab/homepage-gui:latest}
     build: .
     container_name: homepage-gui
     restart: unless-stopped
