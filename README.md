@@ -5,10 +5,10 @@
 > and apply changes to your live dashboard. No login, no database, runs in one container.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
-[![Docker Image](https://img.shields.io/docker/v/viibeware/homepage-gui?label=docker%20hub&sort=semver)](https://hub.docker.com/r/viibeware/homepage-gui)
-[![Docker Pulls](https://img.shields.io/docker/pulls/viibeware/homepage-gui)](https://hub.docker.com/r/viibeware/homepage-gui)
+[![Docker Image](https://img.shields.io/docker/v/hyprlab/homepage-gui?label=docker%20hub&sort=semver)](https://hub.docker.com/r/hyprlab/homepage-gui)
+[![Docker Pulls](https://img.shields.io/docker/pulls/hyprlab/homepage-gui)](https://hub.docker.com/r/hyprlab/homepage-gui)
 
-![Homepage GUI screenshot](https://raw.githubusercontent.com/viibeware/homepage-gui/main/docs/screenshot.png)
+![Homepage GUI screenshot](https://raw.githubusercontent.com/hyprlab/homepage-gui/main/docs/screenshot.png)
 
 ---
 
@@ -87,16 +87,16 @@ Docker Compose is the supported way to run Homepage GUI.
 ### 1. Get the files
 
 ```bash
-git clone https://github.com/viibeware/homepage-gui.git
+git clone https://github.com/hyprlab/homepage-gui.git
 cd homepage-gui
 ```
 
-The repo ships a ready-to-use `compose.yaml` that pulls `viibeware/homepage-gui:latest`:
+The repo ships a ready-to-use `compose.yaml` that pulls `hyprlab/homepage-gui:latest`:
 
 ```yaml
 services:
   homepage-gui:
-    image: ${IMAGE:-viibeware/homepage-gui:latest}
+    image: ${IMAGE:-hyprlab/homepage-gui:latest}
     build: .
     container_name: homepage-gui
     restart: unless-stopped
@@ -190,7 +190,7 @@ These are set in `compose.yaml`'s `environment:` (container-side) and `.env` (ho
 | `HOST_ICONS_DIR` | `/srv/homepage/icons` | Host path mounted to `/icons` |
 | `HOST_PORT` | `5005` | Host port mapped to the container's `5000` |
 | `HOMEPAGE_CONTAINER` | `homepage` | Passed through for the restart feature |
-| `IMAGE` | `viibeware/homepage-gui:1.0.0` | Pin a specific image tag (optional) |
+| `IMAGE` | `hyprlab/homepage-gui:1.0.0` | Pin a specific image tag (optional) |
 
 The container runs as `root` (`user: "0:0"`) so it can write a typically root-owned
 `services.yaml`. Change `user:` if your config files are owned by a different UID/GID.
@@ -232,7 +232,7 @@ docker compose pull        # fetch the latest image
 docker compose up -d       # recreate the container
 ```
 
-To pin a version, set `IMAGE=viibeware/homepage-gui:1.0.0` in `.env`.
+To pin a version, set `IMAGE=hyprlab/homepage-gui:1.0.0` in `.env`.
 
 ## How icons render
 

@@ -28,10 +28,10 @@ BACKUP_DIR = os.environ.get(
 KEEP_BACKUPS = int(os.environ.get("KEEP_BACKUPS", "40"))
 KEEP_BACKUP_DAYS = int(os.environ.get("KEEP_BACKUP_DAYS", "14"))
 
-APP_VERSION = "1.1.2"
+APP_VERSION = "0.1.3"
 # Public source location (AGPL §13). Override if you run a modified version so
 # your network users can reach *your* corresponding source.
-SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/viibeware/homepage-gui")
+SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/hyprlab/homepage-gui")
 # Single source of truth for release notes, shown in-app and on GitHub.
 CHANGELOG_PATH = os.environ.get(
     "CHANGELOG_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "CHANGELOG.md")

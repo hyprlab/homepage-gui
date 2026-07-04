@@ -10,12 +10,12 @@
 # Usage:
 #   ./release.sh 1.1.3
 #
-# Prereqs: gh (authenticated), docker logged in to Docker Hub as viibeware,
+# Prereqs: gh (authenticated), docker logged in to Docker Hub as hyprlab,
 # and a matching "## [X.Y.Z]" section already written in CHANGELOG.md.
 
 set -euo pipefail
 
-IMAGE="viibeware/homepage-gui"
+IMAGE="hyprlab/homepage-gui"
 BUILDER="hpgui-builder"
 
 VERSION="${1:-}"
@@ -90,5 +90,5 @@ docker buildx build \
 
 echo
 echo "==> Shipped $TAG"
-echo "    GitHub:     https://github.com/viibeware/homepage-gui/releases/tag/$TAG"
+echo "    GitHub:     https://github.com/hyprlab/homepage-gui/releases/tag/$TAG"
 echo "    Docker Hub: docker pull $IMAGE:$VERSION"
