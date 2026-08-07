@@ -272,6 +272,16 @@ bundled [Inter](https://rsms.me/inter/) (SIL OFL). No build step, no database.
 - Group-level settings (a section whose value is a mapping rather than a list of services)
   are shown read-only and preserved verbatim; edit those via **Preview**/raw if needed.
 
+## AI notice
+
+Homepage GUI is built by a human maintainer working with generative AI as a development tool:
+
+- **Code** — the large majority of the Python and JavaScript in this repository was written with Anthropic's Claude (via Claude Code), working from the maintainer's direction. The maintainer decides what gets built, reviews the results, tests every release, and signs off on everything that ships.
+- **Text** — documentation, release notes, and in-app copy are largely AI-drafted and human-edited.
+- **The app itself contains no AI.** Homepage GUI has no AI features and makes no requests to AI services — it only reads and writes the services.yaml on your own server. AI was used to *build* the app, not to run it.
+
+Bug reports and pull requests are welcome from humans and their AI tools alike; everything merged gets the same human review.
+
 ## License
 
 Licensed under the **GNU Affero General Public License v3.0** — see [LICENSE](LICENSE).
