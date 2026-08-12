@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf" content="{{ csrf_token() }}" />
   <title>Homepage GUI</title>
   <link rel="icon" type="image/png" href="{{ static_url('img/favicon.png') }}" />
   <link rel="apple-touch-icon" href="{{ static_url('img/apple-touch-icon.png') }}" />
@@ -28,6 +29,11 @@
       <button class="btn ghost" id="previewBtn" title="Preview YAML">⟨/⟩ Preview</button>
       <button class="btn ghost" id="backupsBtn" title="Backups">⤓ Backups</button>
       <button class="btn primary" id="saveBtn" title="Save (Ctrl+S)">💾 Save</button>
+      <form class="logout-form" method="post" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}" />
+        <button type="submit" class="btn ghost"
+                title="Sign out ({{ current_user.display_name }})">⇥ Sign out</button>
+      </form>
     </div>
   </header>
 

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf" content="{{ csrf_token() }}" />
+  <title>Sign in · Homepage GUI</title>
+  <link rel="icon" type="image/png" href="{{ static_url('img/favicon.png') }}" />
+  <link rel="apple-touch-icon" href="{{ static_url('img/apple-touch-icon.png') }}" />
+  <link rel="stylesheet" href="{{ static_url('css/style.css') }}" />
+</head>
+<body class="login-body">
+  <main class="login-wrap">
+    <div class="login-card">
+      <img class="login-mark" src="{{ static_url('img/logo.png') }}" alt="" />
+      <h1>Homepage GUI</h1>
+      <p class="login-sub">Sign in to edit your dashboard.</p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="flash flash--{{ category }}" role="alert">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <form method="post" class="login-form">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}" />
+        <label class="field">
+          <span>Username</span>
+          <input name="username" required autofocus autocomplete="username"
+                 autocapitalize="none" spellcheck="false" />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input name="password" type="password" required autocomplete="current-password" />
+        </label>
+        <label class="color-toggle login-remember">
+          <input type="checkbox" name="remember" checked />
+          <span>Keep me signed in</span>
+        </label>
+        {% if turnstile_site_key %}
+          <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="auto"></div>
+        {% endif %}
+        <button type="submit" class="btn primary login-submit">Sign in</button>
+      </form>
+
+      <div class="app-credit login-credit">
+        Homepage GUI v{{ app_version }} · AGPLv3 ·
+        <a href="{{ source_url }}" target="_blank" rel="noopener">Source</a>
+      </div>
+    </div>
+  </main>
+  {% if turnstile_site_key %}
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  {% endif %}
+</body>
+</html>
