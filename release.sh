@@ -34,6 +34,11 @@ MAJOR_MINOR="${VERSION%.*}"
 cd "$(dirname "$0")"
 
 # --- sanity checks ---------------------------------------------------------
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "$BRANCH" != "main" ]]; then
+  echo "error: releases are cut from main (currently on '$BRANCH')." >&2
+  exit 1
+fi
 if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then
   echo "error: no '## [$VERSION]' section in CHANGELOG.md — add release notes first." >&2
   exit 1
@@ -41,6 +46,31 @@ fi
 if git rev-parse "$TAG" >/dev/null 2>&1; then
   echo "error: tag $TAG already exists." >&2
   exit 1
+fi
+
+# Sync with the remote *before* committing anything. A push rejected later
+# (because someone pushed to main meanwhile) would otherwise leave a release
+# commit and tag stranded locally, needing a hand-rebase and retag.
+echo "==> Fetching origin"
+git fetch --quiet origin
+if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+  echo "error: tag $TAG already exists on origin." >&2
+  exit 1
+fi
+BEHIND="$(git rev-list --count HEAD..origin/main)"
+AHEAD="$(git rev-list --count origin/main..HEAD)"
+if [[ "$BEHIND" -gt 0 ]]; then
+  if [[ "$AHEAD" -gt 0 ]]; then
+    echo "error: main and origin/main have diverged ($AHEAD local, $BEHIND remote commit(s))." >&2
+    echo "       Reconcile first:  git pull --rebase origin main" >&2
+    exit 1
+  fi
+  echo "==> Behind origin/main by $BEHIND commit(s) — fast-forwarding"
+  # Refuses (leaving the tree untouched) if uncommitted work would be clobbered.
+  if ! git merge --ff-only origin/main; then
+    echo "error: could not fast-forward — commit or stash the conflicting changes." >&2
+    exit 1
+  fi
 fi
 
 echo "==> Releasing $TAG"
@@ -53,9 +83,11 @@ if ! git diff --quiet; then
   git commit -m "Release $TAG"
 fi
 
-# --- 2. tag + push + GitHub release ---------------------------------------
-git tag -a "$TAG" -m "$TAG"
+# --- 2. push + tag + GitHub release ---------------------------------------
+# Push the commit first: if main moved under us despite the check above, the
+# rejection happens before there's a tag to clean up.
 git push origin main
+git tag -a "$TAG" -m "$TAG"
 git push origin "$TAG"
 
 # Extract this version's notes from CHANGELOG.md (everything between its
