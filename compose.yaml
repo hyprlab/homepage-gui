@@ -19,6 +19,14 @@ services:
       - ICONS_DIR=/icons
       # Container restarted (via the Docker socket) so Homepage serves new icons.
       - HOMEPAGE_CONTAINER=${HOMEPAGE_CONTAINER:-homepage}
+      # Session signing key. If unset, one is generated and kept in DATA_DIR.
+      - SECRET_KEY=${SECRET_KEY:-}
+      # Cloudflare Turnstile (optional — leave empty to disable the challenge).
+      - TURNSTILE_SITE_KEY=${TURNSTILE_SITE_KEY:-}
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
+      # Admin account database + session key. Defaults to a dot-folder in the
+      # mounted config dir, so it survives recreates with no extra volume.
+      - DATA_DIR=${DATA_DIR:-/config/.homepage-gui}
     ports:
       # LAN access: http://<host>:${HOST_PORT}
       - "${HOST_PORT:-5005}:5000"

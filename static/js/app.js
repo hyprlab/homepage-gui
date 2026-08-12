@@ -18,6 +18,43 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
+  // Every same-origin write carries the session CSRF token, and an expired
+  // session bounces to the login page instead of failing silently.
+  const CSRF = document.querySelector('meta[name="csrf"]')?.content || "";
+  const SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
+  let redirectingToLogin = false;
+  const nativeFetch = window.fetch.bind(window);
+
+  window.fetch = async (input, init) => {
+    const url = new URL(
+      typeof input === "string" ? input : input.url,
+      window.location.href
+    );
+    const sameOrigin = url.origin === window.location.origin;
+    const method = (
+      (init && init.method) || (typeof input !== "string" && input.method) || "GET"
+    ).toUpperCase();
+
+    if (sameOrigin && CSRF && !SAFE_METHODS.includes(method)) {
+      const headers = new Headers(
+        (init && init.headers) || (typeof input !== "string" ? input.headers : undefined)
+      );
+      headers.set("X-CSRF", CSRF);
+      init = { ...(init || {}), headers };
+    }
+
+    const res = await nativeFetch(input, init);
+    if (res.status === 401 && sameOrigin && !redirectingToLogin) {
+      redirectingToLogin = true;
+      toast("Session expired — signing you in again…", "err");
+      setTimeout(() => {
+        window.location.href =
+          "/login?next=" + encodeURIComponent(window.location.pathname);
+      }, 1200);
+    }
+    return res;
+  };
+
   // ---- Icon string -> preview URL resolution ----
   const ICONIFY = "https://api.iconify.design";
   const DASH = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons";

@@ -362,7 +362,7 @@ html, body {
 
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field > span { font-size: 12px; color: var(--text-dim); font-weight: 600; }
-.field input[type="text"], .advanced textarea {
+.field input[type="text"], .field input[type="password"], .advanced textarea {
   width: 100%;
   padding: 9px 11px;
   background: var(--bg-elev);
@@ -522,3 +522,69 @@ html, body {
   .layout { grid-template-columns: 1fr; }
   .sidebar { display: none; }
 }
+
+/* ---------- Login ---------- */
+.login-body {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(900px 500px at 50% -10%, rgba(59, 130, 246, 0.16), transparent 70%),
+    var(--bg);
+}
+.login-wrap { width: 100%; max-width: 380px; }
+.login-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 30px 28px 22px;
+  background: linear-gradient(180deg, var(--bg-elev), var(--panel));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+.login-mark { width: 44px; height: 44px; border-radius: 10px; align-self: center; }
+.login-card h1 { margin: 0; font-size: 19px; text-align: center; }
+.login-sub { margin: -8px 0 4px; font-size: 13px; color: var(--muted); text-align: center; }
+.login-form { display: flex; flex-direction: column; gap: 14px; }
+.flash {
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev2);
+}
+.flash--error { background: var(--danger-soft); border-color: rgba(239, 68, 68, 0.35); color: #fca5a5; }
+.flash--success { background: rgba(34, 197, 94, .12); border-color: rgba(34, 197, 94, .35); color: #86efac; }
+.form-error { margin: 0; font-size: 13px; color: #fca5a5; }
+.login-remember { font-size: 13px; color: var(--text-dim); }
+.login-submit { width: 100%; padding: 10px 14px; font-size: 14px; }
+.login-credit { margin-top: 4px; text-align: center; }
+.logout-form { margin: 0; display: flex; }
+.btn-block { width: 100%; }
+
+/* Turnstile widget — centred, and never wider than the card. */
+.cf-turnstile { display: flex; justify-content: center; min-height: 65px; }
+.cf-turnstile iframe { max-width: 100%; }
+
+/* ---------- First-run wizard ---------- */
+.wizard { gap: 12px; }
+.wiz-dots { display: flex; justify-content: center; gap: 6px; margin: 2px 0 6px; }
+.wiz-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); transition: background .2s ease; }
+.wiz-dot.is-active { background: var(--accent); }
+.wiz-step { display: none; flex-direction: column; gap: 14px; }
+.wiz-step.is-active { display: flex; }
+.wiz-title { margin: 0; font-size: 16px; }
+.wiz-text { margin: -6px 0 0; font-size: 13px; line-height: 1.55; color: var(--text-dim); }
+.wiz-text code, .wiz-list code { font-family: var(--mono); font-size: 12px; }
+.wiz-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.9; color: var(--text-dim); }
+.wiz-path {
+  margin: -4px 0 0; padding: 9px 11px;
+  background: var(--bg-elev); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.wiz-path code { font-family: var(--mono); font-size: 11px; word-break: break-all; color: var(--text-dim); }
+.wiz-nav { display: flex; gap: 10px; margin-top: 2px; }
+.wiz-nav .btn { flex: 1; }
+.wizard .hint { margin: 0; }

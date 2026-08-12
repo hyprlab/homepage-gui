@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf" content="{{ csrf_token() }}" />
+  <title>Set up Homepage GUI</title>
+  <link rel="icon" type="image/png" href="{{ static_url('img/favicon.png') }}" />
+  <link rel="apple-touch-icon" href="{{ static_url('img/apple-touch-icon.png') }}" />
+  <link rel="stylesheet" href="{{ static_url('css/style.css') }}" />
+</head>
+<body class="login-body">
+  <main class="login-wrap">
+    <div class="login-card wizard" id="wizard">
+      <img class="login-mark" src="{{ static_url('img/logo.png') }}" alt="" />
+      <h1>Homepage GUI</h1>
+
+      <div class="wiz-dots" aria-hidden="true">
+        <span class="wiz-dot is-active"></span><span class="wiz-dot"></span><span class="wiz-dot"></span>
+      </div>
+
+      <!-- Step 1 · Welcome -->
+      <section class="wiz-step is-active" data-step="0">
+        <h2 class="wiz-title">Welcome</h2>
+        <p class="wiz-text">Let's secure this editor — it takes about a minute.</p>
+        <ul class="wiz-list">
+          <li>Create the admin account</li>
+          <li>Sign in and start editing <code>services.yaml</code></li>
+        </ul>
+        <p class="hint">This is the only account. Anyone with it can edit your dashboard.</p>
+        <div class="wiz-nav">
+          <button class="btn primary btn-block" data-next>Get started</button>
+        </div>
+      </section>
+
+      <!-- Step 2 · Admin account -->
+      <section class="wiz-step" data-step="1">
+        <h2 class="wiz-title">Create the admin account</h2>
+        <p class="wiz-text">Used to sign in to this editor. Store it in your password
+          manager — there's no reset link.</p>
+        <div class="login-form">
+          <label class="field">
+            <span>Name <small class="muted">(optional)</small></span>
+            <input id="wiz-name" type="text" autocomplete="name" maxlength="120" placeholder="Your name" />
+          </label>
+          <label class="field">
+            <span>Username</span>
+            <input id="wiz-username" type="text" autocomplete="username" spellcheck="false"
+                   autocapitalize="none" maxlength="80" placeholder="admin" required />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input id="wiz-password" type="password" minlength="8" autocomplete="new-password" required />
+          </label>
+          <label class="field">
+            <span>Confirm password</span>
+            <input id="wiz-confirm" type="password" minlength="8" autocomplete="new-password" required />
+          </label>
+        </div>
+        <p class="form-error" id="wiz-error-1" hidden></p>
+        <div class="wiz-nav">
+          <button class="btn ghost" data-back>Back</button>
+          <button class="btn primary" data-next>
+            <span class="btn-label">Create account</span>
+            <span class="btn-busy" hidden>Setting up…</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Step 3 · Done -->
+      <section class="wiz-step" data-step="2">
+        <h2 class="wiz-title">You're all set</h2>
+        <p class="wiz-text">You're signed in as <strong id="wiz-who"></strong>. This editor
+          writes to:</p>
+        <p class="wiz-path"><code>{{ services_path }}</code></p>
+        <p class="hint" id="wiz-file-note"></p>
+        <div class="wiz-nav">
+          <a class="btn primary btn-block" href="{{ url_for('index') }}">Open the editor</a>
+        </div>
+      </section>
+
+      <div class="app-credit login-credit">
+        Homepage GUI v{{ app_version }} · AGPLv3 ·
+        <a href="{{ source_url }}" target="_blank" rel="noopener">Source</a>
+      </div>
+    </div>
+  </main>
+
+<script>
+(function () {
+  "use strict";
+  var CSRF = document.querySelector('meta[name="csrf"]').content;
+  var steps = Array.prototype.slice.call(document.querySelectorAll(".wiz-step"));
+  var dots = Array.prototype.slice.call(document.querySelectorAll(".wiz-dot"));
+  var current = 0;
+
+  function show(n) {
+    current = n;
+    steps.forEach(function (s, i) { s.classList.toggle("is-active", i === n); });
+    dots.forEach(function (d, i) { d.classList.toggle("is-active", i <= n); });
+    var focus = steps[n].querySelector("input");
+    if (focus) focus.focus();
+  }
+
+  function err(step, message) {
+    var el = document.getElementById("wiz-error-" + step);
+    if (!el) return;
+    el.textContent = message || "";
+    el.hidden = !message;
+  }
+
+  function setBusy(btn, busy) {
+    btn.disabled = busy;
+    var label = btn.querySelector(".btn-label"), busyEl = btn.querySelector(".btn-busy");
+    if (label) label.hidden = busy;
+    if (busyEl) busyEl.hidden = !busy;
+  }
+
+  function api(url, body) {
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF": CSRF },
+      body: JSON.stringify(body)
+    }).then(function (resp) {
+      return resp.json().then(function (data) {
+        if (!resp.ok) throw new Error(data.error || "Something went wrong.");
+        return data;
+      });
+    });
+  }
+
+  document.querySelectorAll("[data-back]").forEach(function (btn) {
+    btn.addEventListener("click", function () { show(current - 1); });
+  });
+
+  document.querySelectorAll("[data-next]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (current === 0) { show(1); return; }
+      if (current === 1) {
+        var username = document.getElementById("wiz-username").value.trim();
+        var pw = document.getElementById("wiz-password").value;
+        var confirm = document.getElementById("wiz-confirm").value;
+        if (!username || /\s/.test(username)) { err(1, "Pick a username with no spaces."); return; }
+        if (pw.length < 8) { err(1, "Passwords need at least 8 characters."); return; }
+        if (pw !== confirm) { err(1, "Passwords don't match."); return; }
+        err(1, null);
+        setBusy(btn, true);
+        api("/setup", {
+          name: document.getElementById("wiz-name").value.trim(),
+          username: username,
+          password: pw,
+          confirm: confirm
+        }).then(function () {
+          document.getElementById("wiz-who").textContent =
+            document.getElementById("wiz-name").value.trim() || username;
+          show(2);
+          // Report whether the target file is actually writable, so a bad
+          // mount is obvious here rather than on the first failed save.
+          return fetch("/api/health").then(function (r) { return r.json(); }).then(function (h) {
+            document.getElementById("wiz-file-note").textContent = h.exists
+              ? (h.writable ? "Found and writable." : "Found, but not writable — check the mount and file permissions.")
+              : "Not found yet — check that your Homepage config directory is mounted.";
+          });
+        }).catch(function (e) {
+          err(1, e.message);
+        }).then(function () {
+          setBusy(btn, false);
+        });
+      }
+    });
+  });
+
+  // Enter anywhere in the account step advances it.
+  document.querySelectorAll('.wiz-step[data-step="1"] input').forEach(function (input) {
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        document.querySelector('.wiz-step[data-step="1"] [data-next]').click();
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

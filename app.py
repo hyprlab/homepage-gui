@@ -1,6 +1,7 @@
 """Homepage GUI — a drag-and-drop editor for Homepage's services.yaml."""
 
 import os
+import secrets
 import socket
 import http.client
 
@@ -8,14 +9,20 @@ from flask import (
     Flask,
     abort,
     jsonify,
+    redirect,
     render_template,
     request,
     send_file,
     send_from_directory,
+    session,
     url_for,
 )
+from flask_login import LoginManager, current_user
 from werkzeug.utils import secure_filename
 
+import auth
+import setup_wizard
+from models import User, db
 from yaml_store import ServicesStore, COMMON_FIELDS
 
 CONFIG_DIR = os.environ.get("HOMEPAGE_CONFIG_DIR", "/config")
@@ -28,7 +35,7 @@ BACKUP_DIR = os.environ.get(
 KEEP_BACKUPS = int(os.environ.get("KEEP_BACKUPS", "40"))
 KEEP_BACKUP_DAYS = int(os.environ.get("KEEP_BACKUP_DAYS", "14"))
 
-APP_VERSION = "0.1.3"
+APP_VERSION = "0.2.0"
 # Public source location (AGPL §13). Override if you run a modified version so
 # your network users can reach *your* corresponding source.
 SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/hyprlab/homepage-gui")
@@ -47,11 +54,79 @@ DOCKER_SOCK = os.environ.get("DOCKER_SOCK", "/var/run/docker.sock")
 
 os.makedirs(ICONS_DIR, exist_ok=True)
 
+# The account database and session key live here — a dot-folder inside the
+# mounted config dir, so they persist with no extra volume. Point DATA_DIR at a
+# dedicated volume if you'd rather keep them out of the Homepage config.
+DATA_DIR = os.environ.get("DATA_DIR", os.path.join(CONFIG_DIR, ".homepage-gui"))
+os.makedirs(DATA_DIR, exist_ok=True)
+
+
+def _secret_key():
+    """Use SECRET_KEY from the environment, otherwise persist one in the data
+    dir so sessions survive restarts."""
+    env = os.environ.get("SECRET_KEY")
+    if env:
+        return env
+    keyfile = os.path.join(DATA_DIR, ".secret_key")
+    try:
+        with open(keyfile, "r", encoding="utf-8") as fh:
+            key = fh.read().strip()
+        if key:
+            return key
+    except OSError:
+        pass
+    key = secrets.token_hex(32)
+    fd = os.open(keyfile, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(key)
+    return key
+
+
 app = Flask(__name__)
 # Preserve our model's key order through the JSON API instead of alphabetizing.
 app.json.sort_keys = False
 # Cap upload size (icons are small).
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+app.config.update(
+    SECRET_KEY=_secret_key(),
+    SQLALCHEMY_DATABASE_URI=os.environ.get(
+        "DATABASE_URL", "sqlite:///%s" % os.path.join(DATA_DIR, "homepage-gui.db")
+    ),
+    SQLALCHEMY_TRACK_MODIFICATIONS=False,
+    SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True},
+    # Cloudflare Turnstile — leave unset to disable the challenge (e.g. LAN use).
+    TURNSTILE_SITE_KEY=os.environ.get("TURNSTILE_SITE_KEY", ""),
+    TURNSTILE_SECRET_KEY=os.environ.get("TURNSTILE_SECRET_KEY", ""),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    REMEMBER_COOKIE_HTTPONLY=True,
+    REMEMBER_COOKIE_SAMESITE="Lax",
+    # Read by the setup wizard so it can report on the target file.
+    SERVICES_PATH=SERVICES_PATH,
+)
+
+db.init_app(app)
+
+login_manager = LoginManager(app)
+login_manager.login_view = "auth.login"
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+
+
+@login_manager.unauthorized_handler
+def unauthorized():
+    """API callers get JSON they can act on; browsers get the login page."""
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Authentication required", "login": url_for("auth.login")}), 401
+    return redirect(url_for("auth.login", next=request.path))
+
+
+app.register_blueprint(auth.bp)
+app.register_blueprint(setup_wizard.bp)
+
 store = ServicesStore(
     SERVICES_PATH, BACKUP_DIR, keep=KEEP_BACKUPS, keep_days=KEEP_BACKUP_DAYS
 )
@@ -108,14 +183,75 @@ def inject_static_version():
     return {"static_url": static_url}
 
 
+# ---------------------------------------------------------------------------
+# Setup steering, auth guard and CSRF
+# ---------------------------------------------------------------------------
+# Reachable without a session; everything else needs one.
+PUBLIC_ENDPOINTS = {"auth.login", "auth.logout", "setup.wizard", "setup.submit", "static", "health"}
+
+
+@app.before_request
+def steer_to_setup():
+    """A fresh install (zero users) goes to the wizard, nowhere else."""
+    if request.endpoint in ("setup.wizard", "setup.submit", "static"):
+        return None
+    if setup_wizard.needs_setup():
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "This instance isn't set up yet.", "setup": url_for("setup.wizard")}), 401
+        return redirect(url_for("setup.wizard"))
+    return None
+
+
+@app.before_request
+def require_login():
+    """Guard every route in one place, so a new endpoint is protected by
+    default rather than by remembering a decorator."""
+    if request.endpoint in PUBLIC_ENDPOINTS or current_user.is_authenticated:
+        return None
+    return app.login_manager.unauthorized()
+
+
+# ---- CSRF (lightweight, session-token based) ----
+def csrf_token() -> str:
+    if "_csrf" not in session:
+        session["_csrf"] = secrets.token_hex(16)
+    return session["_csrf"]
+
+
+@app.before_request
+def check_csrf():
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return None
+    sent = request.headers.get("X-CSRF") or request.form.get("_csrf")
+    if not sent or sent != session.get("_csrf"):
+        return {"error": "Invalid or missing CSRF token."}, 400
+    return None
+
+
+@app.after_request
+def no_stale_html(resp):
+    # Never let a signed-in page be replayed from cache after sign-out.
+    if resp.mimetype == "text/html":
+        resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.context_processor
+def inject_globals():
+    return {
+        "csrf_token": csrf_token,
+        "turnstile_site_key": app.config["TURNSTILE_SITE_KEY"],
+        "app_version": APP_VERSION,
+        "source_url": SOURCE_URL,
+    }
+
+
 @app.route("/")
 def index():
     return render_template(
         "index.html",
         common_fields=COMMON_FIELDS,
         services_path=SERVICES_PATH,
-        app_version=APP_VERSION,
-        source_url=SOURCE_URL,
     )
 
 
@@ -131,6 +267,10 @@ def changelog():
 
 @app.route("/api/health")
 def health():
+    # Stays reachable without a session so container health checks keep
+    # working, but it gives nothing away about the host's filesystem.
+    if not current_user.is_authenticated:
+        return jsonify({"ok": True, "auth_required": True})
     return jsonify(
         {
             "ok": True,
@@ -300,6 +440,10 @@ def download():
         as_attachment=True,
         download_name="services.yaml",
     )
+
+
+with app.app_context():
+    db.create_all()
 
 
 if __name__ == "__main__":

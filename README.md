@@ -2,7 +2,8 @@
 
 > A self-hosted, drag-and-drop web editor for [gethomepage](https://gethomepage.dev)'s
 > `services.yaml` — organize sections and services, edit every field, pick or upload icons,
-> and apply changes to your live dashboard. No login, no database, runs in one container.
+> and apply changes to your live dashboard. Runs in one container, behind a sign-in you
+> set up on first boot.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Docker Image](https://img.shields.io/docker/v/hyprlab/homepage-gui?label=docker%20hub&sort=semver)](https://hub.docker.com/r/hyprlab/homepage-gui)
@@ -23,6 +24,7 @@
   - [3. Enable custom icon uploads (optional)](#3-enable-custom-icon-uploads-optional)
   - [4. Start it](#4-start-it)
 - [Configuration reference](#configuration-reference)
+- [The login](#the-login)
 - [Using the app](#using-the-app)
 - [Custom icon uploads & the Homepage restart](#custom-icon-uploads--the-homepage-restart)
 - [Backups](#backups)
@@ -69,6 +71,9 @@ gives that file a fast, modern editor:
 - **Backups & restore** in the UI, with **14-day auto-purge** (configurable) and a count cap.
 - **YAML preview** before saving.
 - **One-click Homepage restart** so newly-uploaded icons get served.
+- **Sign-in, set up on first boot** — a short wizard creates your admin account; after that
+  the whole app (UI and API) is behind a login, with optional
+  [Cloudflare Turnstile](#the-login). See [The login](#the-login).
 - **In-app release notes** (click the version in the sidebar footer).
 - Self-hosted **Inter** font and cache-busted assets; in-app **Source** link (AGPL §13).
 
@@ -163,6 +168,9 @@ docker compose up -d
 
 Open **`http://<host>:5005`** (the port from `HOST_PORT`) on any device on your LAN.
 
+The first visit runs a short **setup wizard** that creates your admin account — see
+[The login](#the-login). After that you'll be signed in and looking at your dashboard.
+
 ## Configuration reference
 
 These are set in `compose.yaml`'s `environment:` (container-side) and `.env` (host-side).
@@ -181,6 +189,11 @@ These are set in `compose.yaml`'s `environment:` (container-side) and `.env` (ho
 | `DOCKER_SOCK` | `/var/run/docker.sock` | Docker socket used for the restart |
 | `SOURCE_URL` | this repo | Source link shown in-app (set to your fork if modified) |
 | `PORT` | `5000` | In-container listen port (host port is mapped in compose) |
+| `DATA_DIR` | `$HOMEPAGE_CONFIG_DIR/.homepage-gui` | Holds the account database and session key |
+| `SECRET_KEY` | auto | Session signing key; generated and persisted in `DATA_DIR` if unset |
+| `TURNSTILE_SITE_KEY` | *(empty)* | Cloudflare Turnstile site key — empty disables the challenge |
+| `TURNSTILE_SECRET_KEY` | *(empty)* | Turnstile secret key (both must be set to enable it) |
+| `DATABASE_URL` | `sqlite:///$DATA_DIR/homepage-gui.db` | Override the account database location |
 
 **`.env` (host-side, used by compose)**
 
@@ -191,9 +204,85 @@ These are set in `compose.yaml`'s `environment:` (container-side) and `.env` (ho
 | `HOST_PORT` | `5005` | Host port mapped to the container's `5000` |
 | `HOMEPAGE_CONTAINER` | `homepage` | Passed through for the restart feature |
 | `IMAGE` | `hyprlab/homepage-gui:1.0.0` | Pin a specific image tag (optional) |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | `0x4AAA…` | Cloudflare Turnstile on the login (optional) |
+| `SECRET_KEY` | `a1b2c3…` | Pin the session signing key (optional) |
 
 The container runs as `root` (`user: "0:0"`) so it can write a typically root-owned
 `services.yaml`. Change `user:` if your config files are owned by a different UID/GID.
+
+## The login
+
+Homepage GUI edits the file your dashboard runs on, so it ships with a sign-in. The first
+time you open it, a short wizard creates your admin account:
+
+1. **Welcome** — what's about to happen.
+2. **Create the admin account** — name (optional), username, password (8+ characters).
+3. **You're all set** — confirms which `services.yaml` it will write to, and whether that
+   file is actually writable, so a bad mount shows up here rather than on your first save.
+
+You're signed in when the wizard finishes. There's one account and no registration page —
+this is a single-operator tool. Keep the password in your password manager; there's no
+reset link, and see [Forgot the password](#forgot-the-password) if you lose it.
+
+Everything else is guarded: every page and every `/api/*` route needs a session. Sign out
+from the button in the top bar.
+
+**Where the account lives**
+
+The account database and the session signing key sit in `DATA_DIR`, which defaults to
+`.homepage-gui/` inside the config directory you already mount — so they survive
+`docker compose up -d` and container recreates with no extra volume. Point `DATA_DIR`
+somewhere else (a named volume, say) if you'd rather keep them out of your Homepage config:
+
+```yaml
+    environment:
+      - DATA_DIR=/data
+    volumes:
+      - homepage-gui-data:/data
+```
+
+### Cloudflare Turnstile (optional)
+
+If the GUI is reachable from the internet, you can put a Turnstile challenge on the login.
+Create a widget at **Cloudflare dashboard → Turnstile**, then put the pair in `.env`:
+
+```env
+TURNSTILE_SITE_KEY=0x4AAAAAAA...
+TURNSTILE_SECRET_KEY=0x4AAAAAAA...
+```
+
+The challenge renders on the sign-in page and is verified server-side against Cloudflare
+before the password is ever checked. Leave either value empty and the challenge is skipped
+entirely — no Cloudflare account needed for LAN use. If Cloudflare can't be reached, the
+login fails closed rather than waving people through.
+
+### Forgot the password
+
+There's no reset link, but the account row is yours to delete — remove the database and the
+next start runs the setup wizard again:
+
+```bash
+docker compose down
+sudo rm /path/to/homepage/config/.homepage-gui/homepage-gui.db
+docker compose up -d
+```
+
+Your `services.yaml`, backups and uploaded icons are untouched by this.
+
+### Notes on the session
+
+- The session cookie is `HttpOnly` and `SameSite=Lax`, signed with `SECRET_KEY` (generated
+  and persisted in `DATA_DIR` when unset, so sign-ins survive restarts).
+- **Keep me signed in** issues a long-lived remember cookie; leave it unticked and the
+  session ends with the browser.
+- Writes (`POST`/`PUT`/`PATCH`/`DELETE`) carry a per-session CSRF token — as a hidden
+  `_csrf` field in forms, or an `X-CSRF` header from the editor's own API calls. If you
+  script against the API, read the token from the `<meta name="csrf">` tag on any page and
+  send it in that header, reusing the same cookie jar.
+- `/api/health` stays reachable without a session for container health checks, but reports
+  nothing beyond `{"ok": true}` until you sign in.
+- If you expose the GUI beyond your LAN, put it behind HTTPS — over plain HTTP the session
+  cookie travels in the clear.
 
 ## Using the app
 
@@ -259,11 +348,17 @@ Run the Flask app directly (without Docker) for development:
 pip install -r requirements.txt
 HOMEPAGE_CONFIG_DIR=/path/to/homepage/config \
 ICONS_DIR=/path/to/homepage/icons \
+DATA_DIR=./devdata \
 python app.py            # serves on http://localhost:5000
 ```
 
-**Stack:** Flask + PyYAML + gunicorn (backend); vanilla JS + SortableJS + js-yaml (frontend);
-bundled [Inter](https://rsms.me/inter/) (SIL OFL). No build step, no database.
+The first run drops you in the setup wizard. `DATA_DIR` keeps the dev account database out
+of your real config directory; delete that folder to start over. Turnstile stays off unless
+you set the two `TURNSTILE_*` variables.
+
+**Stack:** Flask + Flask-Login + SQLAlchemy + PyYAML + gunicorn (backend); vanilla JS +
+SortableJS + js-yaml (frontend); bundled [Inter](https://rsms.me/inter/) (SIL OFL). No build
+step; the only database is a single-table SQLite file holding the admin account.
 
 ## Limitations
 

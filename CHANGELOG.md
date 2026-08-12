@@ -9,6 +9,39 @@ GitHub and inside the app (click the version in the sidebar footer → **What's 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-12
+
+### Added
+- **Sign-in, with a first-boot setup wizard.** A fresh install steers every request to
+  `/setup`, where a three-step wizard creates the admin account (name, username, password)
+  and signs you straight in. From then on every page and every `/api/*` route requires a
+  session, and a **Sign out** button sits in the top bar.
+  - One account, no registration page — this is a single-operator tool. Passwords are
+    stored as werkzeug hashes in a small SQLite database; usernames match
+    case-insensitively at sign-in.
+  - The wizard's last step confirms which `services.yaml` the editor will write to and
+    whether it's writable, so a bad mount surfaces before your first save.
+- **Cloudflare Turnstile on the login (optional).** Set `TURNSTILE_SITE_KEY` and
+  `TURNSTILE_SECRET_KEY` and the challenge renders on the sign-in page and is verified
+  server-side before any password check. Leave either empty to skip it entirely; if
+  Cloudflare is unreachable the login fails closed.
+- **CSRF protection.** Every `POST`/`PUT`/`PATCH`/`DELETE` needs the per-session token,
+  sent as a hidden `_csrf` field or an `X-CSRF` header; the editor's own API calls attach
+  it automatically.
+
+### Changed
+- **BREAKING:** the app is no longer open to everyone who can reach the port. Existing
+  installs will land on the setup wizard the first time they're opened after upgrading.
+- New `DATA_DIR` (default `$HOMEPAGE_CONFIG_DIR/.homepage-gui`) holds the account database
+  and the session signing key, so both persist across recreates with no extra volume.
+  `SECRET_KEY` may be set to pin the signing key; otherwise one is generated and stored
+  there. `services.yaml`, backups and uploaded icons are untouched.
+- Sessions survive restarts, **Keep me signed in** issues a remember cookie, and signed-in
+  HTML is served `Cache-Control: no-store` so it can't be replayed after signing out.
+- `/api/health` stays reachable without a session for container health checks, but reports
+  only `{"ok": true}` until you sign in.
+- Added `Flask-SQLAlchemy`, `Flask-Login` and `requests` to requirements.
+
 ## [0.1.3] - 2026-07-04
 
 ### Changed
@@ -79,7 +112,8 @@ Initial public release.
 - Self-hosted **Inter** font, cache-busted static assets, and an in-app **Source** link
   (AGPL §13).
 
-[Unreleased]: https://github.com/hyprlab/homepage-gui/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/hyprlab/homepage-gui/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/hyprlab/homepage-gui/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/hyprlab/homepage-gui/compare/v1.1.2...v0.1.3
 [1.1.2]: https://github.com/hyprlab/homepage-gui/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/hyprlab/homepage-gui/compare/v1.1.0...v1.1.1
