@@ -9,6 +9,28 @@ GitHub and inside the app (click the version in the sidebar footer → **About**
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-15
+
+Documentation only — the app is unchanged from 0.4.0 apart from its version string.
+
+### Changed
+- **The README's install walkthrough now matches how setup actually works.** It said to get
+  `HOST_CONFIG_DIR` exactly right before the first start, which 0.4.0 made unnecessary:
+  - `.env` now explains that only `HOST_CONFIG_DIR` really matters and that a *parent* of
+    the config directory works, since the wizard searches every mount — and that
+    `HOMEPAGE_CONTAINER` is detected for you.
+  - The "don't know your config path?" note shows the message and compose snippet the
+    wizard prints, and the loop to follow: start it, read the host path, paste it in,
+    recreate, **Scan again**.
+  - "Start it" walks through all four wizard steps instead of summarising them in a line.
+  - The Docker socket section covers both of its jobs — restarting Homepage *and* finding
+    it — and what you lose without it.
+- Documented the two dialogs 0.4.0 added: the connection picker behind the path in the
+  header, and **About** behind the version in the sidebar footer.
+- Corrected the backups section: with no explicit `BACKUP_DIR`, backups sit beside
+  whichever `services.yaml` is in use rather than always in `/config`.
+- Noted that existing installs never see the wizard, and where to find the file picker.
+
 ## [0.4.0] - 2026-09-15
 
 ### Added
@@ -183,7 +205,8 @@ Initial public release.
 - Self-hosted **Inter** font, cache-busted static assets, and an in-app **Source** link
   (AGPL §13).
 
-[Unreleased]: https://github.com/hyprlab/homepage-gui/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/hyprlab/homepage-gui/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/hyprlab/homepage-gui/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/hyprlab/homepage-gui/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/hyprlab/homepage-gui/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hyprlab/homepage-gui/compare/v0.1.3...v0.2.0

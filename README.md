@@ -144,10 +144,25 @@ HOST_PORT=5005                             # browse to http://<host>:5005
 HOMEPAGE_CONTAINER=homepage                # your Homepage container's name
 ```
 
-> **Don't know your config path?** Start it anyway. With the Docker socket mounted, the
-> setup wizard asks Docker where your Homepage container keeps its config and shows you
-> the exact host path — paste that into `HOST_CONFIG_DIR`, run `docker compose up -d`
-> again, and the wizard will pick the file up.
+Only `HOST_CONFIG_DIR` really has to be right, and even that is forgiving — the setup
+wizard searches everything you mount, so a *parent* of your config directory works just as
+well as the directory itself. `HOMEPAGE_CONTAINER` is detected from the Docker socket
+during setup, so leave it alone unless you run without the socket.
+
+> **Don't know your config path?** Start it anyway and let the app tell you. With the
+> Docker socket mounted, the wizard asks Docker where your Homepage container keeps its
+> config and prints the exact host path, along with the compose line to add:
+>
+> ```
+> Homepage's config lives at /srv/homepage/config on the host, but that folder
+> isn't mounted into this container yet.
+>
+>   volumes:
+>     - /srv/homepage/config:/config
+> ```
+>
+> Put that path in `HOST_CONFIG_DIR`, run `docker compose up -d` again, and press
+> **Scan again** in the wizard.
 
 > **Tip:** verify the resolved config before starting with `docker compose config`.
 
@@ -168,9 +183,11 @@ services:
 
 Then recreate Homepage once: `docker compose up -d` in your Homepage directory.
 
-The Docker socket mount on the GUI lets its **Restart Homepage** button apply new icons.
-If you'd rather not expose the socket, omit that volume — uploads still work, you'll just
-restart Homepage yourself.
+The Docker socket mount on the GUI does two jobs: it lets the **Restart Homepage** button
+apply new icons, and it lets the setup wizard identify your Homepage container and the host
+directory it keeps its config in. If you'd rather not expose the socket, omit that volume —
+everything still works, but you'll restart Homepage yourself, and the wizard can only search
+the folders you've mounted rather than telling you which one to mount.
 
 ### 4. Start it
 
@@ -178,16 +195,28 @@ restart Homepage yourself.
 docker compose up -d
 ```
 
-Open **`http://<host>:5005`** (the port from `HOST_PORT`) on any device on your LAN.
+Open **`http://<host>:5005`** (the port from `HOST_PORT`) on any device on your LAN. The
+first visit runs a short **setup wizard**:
 
-The first visit runs a short **setup wizard**: it creates your admin account (see
-[The login](#the-login)), then shows you the `services.yaml` files it found and lets you
-confirm which one to edit. After that you'll be signed in and looking at your dashboard.
+1. **Welcome** — a reminder that this edits an existing Homepage install.
+2. **Create the admin account** — name (optional), username, password (8+ characters).
+   This is the only account; see [The login](#the-login).
+3. **Connect to Homepage** — the part that used to be guesswork. While you were filling in
+   the form, the app searched every folder you mounted and asked Docker about your
+   Homepage container. It lists what it found — each candidate with the reason it turned
+   up, its path on the host, and whether this container can write to it — with the most
+   likely one already selected. Confirm it, pick another, or type a path yourself.
+4. **You're all set** — confirms the file it will write to and that it's writable, so a
+   bad mount shows up here rather than on your first save.
+
+That's it. You're signed in and looking at your dashboard, and nothing about the path had
+to be right in `.env` beforehand. See [Finding your `services.yaml`](#finding-your-servicesyaml)
+for how the search works and how to change the file later.
 
 ## Finding your `services.yaml`
 
-The setup wizard's second step answers "which file am I editing?" for you, so a new
-install doesn't hinge on getting a path right in `.env` first. It looks in two places:
+The wizard's **Connect to Homepage** step answers "which file am I editing?" for you, so a
+new install doesn't hinge on getting a path right in `.env` first. It looks in two places:
 
 1. **Every folder mounted into the container.** Each one is walked for a `services.yaml`,
    and a match is ranked higher when Homepage's other config files (`settings.yaml`,
@@ -258,12 +287,13 @@ The container runs as `root` (`user: "0:0"`) so it can write a typically root-ow
 ## The login
 
 Homepage GUI edits the file your dashboard runs on, so it ships with a sign-in. The first
-time you open it, a short wizard creates your admin account:
+time you open it, a short wizard creates your admin account and connects it to your config:
 
-1. **Welcome** — what's about to happen.
+1. **Welcome** — a reminder that this edits an existing Homepage install.
 2. **Create the admin account** — name (optional), username, password (8+ characters).
-3. **You're all set** — confirms which `services.yaml` it will write to, and whether that
-   file is actually writable, so a bad mount shows up here rather than on your first save.
+3. **Connect to Homepage** — pick the `services.yaml` to edit from what it found.
+4. **You're all set** — confirms which file it will write to, and whether that file is
+   actually writable, so a bad mount shows up here rather than on your first save.
 
 You're signed in when the wizard finishes. There's one account and no registration page —
 this is a single-operator tool. Keep the password in your password manager; there's no
@@ -340,6 +370,10 @@ Your `services.yaml`, backups and uploaded icons are untouched by this.
 - **Preview** — see the exact YAML before saving.
 - **Save** — `Ctrl/Cmd+S` or the Save button. A backup is taken automatically.
 - **Backups** — open the Backups dialog to restore a previous version.
+- **Change the file** — click the path under the title in the header to reopen the
+  connection picker (see [Finding your `services.yaml`](#finding-your-servicesyaml)).
+- **About** — click the version in the sidebar footer for links to the project website, the
+  source, Homepage itself, and the full release notes.
 
 ## Custom icon uploads & the Homepage restart
 
@@ -352,8 +386,9 @@ service → **Save** → **Restart Homepage**.
 
 ## Backups
 
-Every save and restore first writes a timestamped copy to `BACKUP_DIR`
-(`/config/.homepage-gui-backups/` by default — a dot-folder Homepage ignores). Backups older
+Every save and restore first writes a timestamped copy to a `.homepage-gui-backups/`
+dot-folder beside your `services.yaml` (Homepage ignores dot-folders). Set `BACKUP_DIR` to
+pin them somewhere fixed instead; otherwise they follow the file if you change it. Backups older
 than `KEEP_BACKUP_DAYS` (default **14**) are purged automatically, with `KEEP_BACKUPS`
 (default 40) as a hard cap. Purging runs on each save and whenever the page or Backups dialog
 loads. Restore or inspect any backup from the **Backups** dialog.
@@ -367,6 +402,10 @@ docker compose up -d       # recreate the container
 ```
 
 To pin a version, set `IMAGE=hyprlab/homepage-gui:1.0.0` in `.env`.
+
+Existing installs keep working exactly as configured — the wizard only runs when there's no
+account yet, so you won't be asked about paths again. The file picker is still there when
+you want it: click the path in the header.
 
 ## How icons render
 
