@@ -27,6 +27,10 @@ services:
       # Admin account database + session key. Defaults to a dot-folder in the
       # mounted config dir, so it survives recreates with no extra volume.
       - DATA_DIR=${DATA_DIR:-/config/.homepage-gui}
+      # Icon previews are proxied and cached on disk rather than fetched
+      # per-icon from api.iconify.design, which rate-limits by IP.
+      - ICON_CACHE_DIR=${ICON_CACHE_DIR:-}
+      - ICON_CACHE_MAX=${ICON_CACHE_MAX:-20000}
     ports:
       # LAN access: http://<host>:${HOST_PORT}
       - "${HOST_PORT:-5005}:5000"

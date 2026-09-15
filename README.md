@@ -194,6 +194,8 @@ These are set in `compose.yaml`'s `environment:` (container-side) and `.env` (ho
 | `TURNSTILE_SITE_KEY` | *(empty)* | Cloudflare Turnstile site key — empty disables the challenge |
 | `TURNSTILE_SECRET_KEY` | *(empty)* | Turnstile secret key (both must be set to enable it) |
 | `DATABASE_URL` | `sqlite:///$DATA_DIR/homepage-gui.db` | Override the account database location |
+| `ICON_CACHE_DIR` | `$DATA_DIR/icon-cache` | Disk cache for Iconify icon bodies, search results and the dashboard-icons index |
+| `ICON_CACHE_MAX` | `20000` | Cached icon bodies to keep before pruning the oldest (~400 bytes each) |
 
 **`.env` (host-side, used by compose)**
 

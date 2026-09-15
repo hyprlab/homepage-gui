@@ -55,13 +55,26 @@
     return res;
   };
 
-  // ---- Icon string -> preview URL resolution ----
+  // ---- Icon rendering ----
+  // A Homepage icon string resolves to one of two things: a plain URL (dashboard
+  // icons, selfh.st, uploads, arbitrary links) or an Iconify prefix + name.
+  // URLs render as <img>. Iconify icons are fetched in batches through this
+  // app's disk-cached proxy and injected as inline <svg> — pointing <img src>
+  // straight at api.iconify.design meant one request per icon, and a single
+  // picker search fired enough of them to trip Cloudflare's rate limit for the
+  // whole source IP (error 1015), after which every preview fell back to "?".
+  // Inline SVG also makes colour a pure CSS concern: the bodies paint with
+  // currentColor, so recolouring costs no network at all.
   const ICONIFY = "https://api.iconify.design";
   const DASH = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons";
   const SELFHST = "https://cdn.jsdelivr.net/gh/selfhst/icons";
 
   // Homepage supports a trailing `-#hexcolor` on mdi/si/sh icons.
   const COLOR_PREFIXES = ["mdi", "si", "sh"];
+  const FA_SETS = {
+    fab: "fa6-brands", far: "fa6-regular", fal: "fa6-regular",
+    fas: "fa6-solid", fad: "fa6-solid", fa: "fa6-solid",
+  };
 
   function splitColorSuffix(name) {
     const m = name.match(/^(.*)-#([0-9a-fA-F]{3,8})$/);
@@ -118,88 +131,208 @@
     return hex ? `${info.prefix}-${info.base}-${hex}` : `${info.prefix}-${info.base}`;
   }
 
-  function iconToUrl(icon, { height = 32, color = null } = {}) {
+  // Icon string -> { kind: "url", url } | { kind: "iconify", prefix, name, color }
+  function resolveIcon(icon) {
+    icon = String(icon || "").trim();
     if (!icon) return null;
-    icon = String(icon).trim();
-    if (!icon) return null;
-    if (/^https?:\/\//i.test(icon)) return icon;
+
+    // An Iconify SVG URL (what the SVG tab stores) is rendered inline like any
+    // other Iconify icon rather than fetched one-off.
+    let m = icon.match(
+      /^https?:\/\/api\.iconify\.design\/([a-z0-9-]+)\/([a-z0-9._-]+)\.svg(?:\?([^#]*))?$/i
+    );
+    if (m) {
+      let color = null;
+      if (m[3]) {
+        const c = m[3].match(/(?:^|&)color=([^&]+)/i);
+        if (c) {
+          try { color = decodeURIComponent(c[1]); } catch (e) { color = c[1]; }
+          if (color && color[0] !== "#") color = "#" + color.replace(/^#?/, "");
+        }
+      }
+      return { kind: "iconify", prefix: m[1].toLowerCase(), name: m[2].toLowerCase(), color };
+    }
+
+    if (/^https?:\/\//i.test(icon)) return { kind: "url", url: icon };
     // Root-relative (e.g. /icons/foo.png) — Homepage serves these, and so does
     // this app at the same path, so previews resolve against our own origin.
-    if (icon.startsWith("/")) return icon;
+    if (icon.startsWith("/")) return { kind: "url", url: icon };
 
-    // Dashboard icons: name.svg / name.png / name.webp
-    let m = icon.match(/^(.+)\.(svg|png|webp)$/i);
-    if (m) {
-      const ext = m[2].toLowerCase();
-      const folder = ext === "svg" ? "svg" : ext === "png" ? "png" : "webp";
-      return `${DASH}/${folder}/${icon}`;
-    }
+    // Dashboard icons: name.svg / name.png / name.webp (jsDelivr, never throttled)
+    m = icon.match(/^(.+)\.(svg|png|webp)$/i);
+    if (m) return { kind: "url", url: `${DASH}/${m[2].toLowerCase()}/${icon}` };
 
     // Material Design Icons: mdi-name or mdi-name-#hexcolor
     m = icon.match(/^mdi-(.+)$/i);
     if (m) {
-      const { base, color: c } = splitColorSuffix(m[1]);
-      return iconifyUrl("mdi", base, { height, color: c || color });
+      const { base, color } = splitColorSuffix(m[1]);
+      return { kind: "iconify", prefix: "mdi", name: base.toLowerCase(), color };
     }
 
     // Simple Icons: si-name or si-name-#hexcolor
     m = icon.match(/^si-(.+)$/i);
     if (m) {
-      const { base, color: c } = splitColorSuffix(m[1]);
-      return iconifyUrl("simple-icons", base, { height, color: c || color });
+      const { base, color } = splitColorSuffix(m[1]);
+      return { kind: "iconify", prefix: "simple-icons", name: base.toLowerCase(), color };
     }
 
-    // Selfh.st icons (color suffix supported by Homepage, but not in the preview)
+    // Selfh.st icons have no Iconify prefix, so they stay on jsDelivr. Homepage
+    // honours a color suffix here; the preview can't, as with the old build.
     m = icon.match(/^sh-(.+)$/i);
     if (m) {
       const { base } = splitColorSuffix(m[1]);
-      return `${SELFHST}/svg/${base.replace(/\.(svg|png)$/, "")}.svg`;
+      return { kind: "url", url: `${SELFHST}/svg/${base.replace(/\.(svg|png)$/i, "")}.svg` };
     }
 
     // Font Awesome: fas- far- fab- fal- fad- fa-
     m = icon.match(/^(fas|far|fab|fal|fad|fa)-(.+)$/i);
     if (m) {
-      const set = faSet(m[1].toLowerCase());
-      return iconifyUrl(set, m[2], { height, color });
+      return { kind: "iconify", prefix: FA_SETS[m[1].toLowerCase()], name: m[2].toLowerCase(), color: null };
     }
 
     // prefix:name (raw iconify)
-    m = icon.match(/^([a-z0-9-]+):([a-z0-9-]+)$/i);
-    if (m) return iconifyUrl(m[1], m[2], { height, color });
+    m = icon.match(/^([a-z0-9-]+):([a-z0-9._-]+)$/i);
+    if (m) return { kind: "iconify", prefix: m[1].toLowerCase(), name: m[2].toLowerCase(), color: null };
 
     return null;
   }
 
-  function faSet(prefix) {
-    switch (prefix) {
-      case "fab": return "fa6-brands";
-      case "far": case "fal": return "fa6-regular";
-      default: return "fa6-solid"; // fa, fas, fad
-    }
+  // ---- Batched Iconify loader ----
+  // Every request made in the same tick is coalesced into one call to our proxy,
+  // which answers from disk when it can. Results are memoized for the session.
+  const iconMemo = new Map(); // "prefix:name" -> entry | null (known missing)
+  let iconQueue = new Map();  // "prefix:name" -> [resolve, …]
+  let iconFlushTimer = null;
+
+  function loadIconifyIcon(prefix, name) {
+    const key = `${prefix}:${name}`;
+    if (iconMemo.has(key)) return Promise.resolve(iconMemo.get(key));
+    return new Promise((resolve) => {
+      const waiting = iconQueue.get(key);
+      if (waiting) { waiting.push(resolve); return; }
+      iconQueue.set(key, [resolve]);
+      if (!iconFlushTimer) iconFlushTimer = setTimeout(flushIconQueue, 24);
+    });
   }
 
-  function iconifyUrl(prefix, name, { height = 32, color = null } = {}) {
-    let u = `${ICONIFY}/${prefix}/${name}.svg?height=${height}`;
-    if (color) u += `&color=${encodeURIComponent(color)}`;
-    return u;
+  async function flushIconQueue() {
+    iconFlushTimer = null;
+    const queue = iconQueue;
+    iconQueue = new Map();
+    const keys = Array.from(queue.keys());
+
+    // Chunks go out together: a 120-result search is two requests, not two
+    // round-trips one after the other.
+    const chunks = [];
+    for (let i = 0; i < keys.length; i += 100) chunks.push(keys.slice(i, i + 100));
+
+    await Promise.all(chunks.map(async (chunk) => {
+      let icons = {};
+      let settled = false;
+      let limited = false;
+      try {
+        const res = await fetch(
+          "/api/iconify/icons?icons=" + encodeURIComponent(chunk.join(","))
+        );
+        const data = await res.json();
+        if (res.ok) {
+          icons = data.icons || {};
+          limited = !!data.rateLimited;
+          settled = true;
+        }
+      } catch (e) {
+        // Leave settled false so a transient failure isn't cached as a miss.
+      }
+      if (limited) iconRateNotice();
+      chunk.forEach((key) => {
+        const entry = icons[key] || null;
+        if (entry) iconMemo.set(key, entry);
+        else if (settled && !limited) iconMemo.set(key, null);
+        (queue.get(key) || []).forEach((fn) => fn(entry));
+      });
+    }));
   }
 
-  function setIconImg(imgEl, fallbackEl, icon, opts) {
-    const url = iconToUrl(icon, opts);
-    if (!url) {
-      imgEl.removeAttribute("src");
-      imgEl.style.display = "none";
-      if (fallbackEl) fallbackEl.style.display = "";
-      return;
-    }
-    imgEl.style.display = "";
-    if (fallbackEl) fallbackEl.style.display = "none";
-    imgEl.onerror = () => {
+  let rateNoticeAt = 0;
+  function iconRateNotice() {
+    // One nudge a minute at most — a rate-limited batch can report this 100 times.
+    if (Date.now() - rateNoticeAt < 60000) return;
+    rateNoticeAt = Date.now();
+    toast("Iconify is rate limiting this host — cached icons still work.", "err");
+  }
+
+  function svgMarkup(entry) {
+    const w = entry.width || 24;
+    const h = entry.height || 24;
+    const l = entry.left || 0;
+    const t = entry.top || 0;
+    let body = entry.body || "";
+    const tf = [];
+    // Aliases can rotate or flip their parent. Rotation pivots on the box centre,
+    // which is exact for the square icons Iconify almost always ships.
+    if (entry.rotate) tf.push(`rotate(${(entry.rotate % 4) * 90} ${l + w / 2} ${t + h / 2})`);
+    if (entry.hFlip) tf.push(`translate(${l * 2 + w} 0) scale(-1 1)`);
+    if (entry.vFlip) tf.push(`translate(0 ${t * 2 + h}) scale(1 -1)`);
+    if (tf.length) body = `<g transform="${tf.join(" ")}">${body}</g>`;
+    const odd = entry.rotate % 2 === 1;
+    return (
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${l} ${t} ${odd ? h : w} ${odd ? w : h}"` +
+      ` aria-hidden="true" focusable="false">${body}</svg>`
+    );
+  }
+
+  // Paint `icon` into the slot that owns `imgEl`, with `fallbackEl` as the "?"
+  // placeholder. Resolves true once something was actually drawn.
+  let renderSeq = 0;
+  function renderIcon(imgEl, fallbackEl, icon) {
+    if (!imgEl) return Promise.resolve(false);
+    const slot = imgEl.parentNode;
+    const seq = String(++renderSeq);
+    imgEl.dataset.seq = seq;
+    const current = () => imgEl.dataset.seq === seq;
+
+    const dropSvg = () => {
+      const old = slot && slot.querySelector(":scope > svg");
+      if (old) old.remove();
+    };
+    const showFallback = () => {
+      dropSvg();
       imgEl.removeAttribute("src");
       imgEl.style.display = "none";
       if (fallbackEl) fallbackEl.style.display = "";
     };
-    imgEl.src = url;
+
+    const src = resolveIcon(icon);
+    if (!src) { showFallback(); return Promise.resolve(false); }
+
+    if (src.kind === "url") {
+      dropSvg();
+      imgEl.style.display = "";
+      if (fallbackEl) fallbackEl.style.display = "none";
+      return new Promise((resolve) => {
+        imgEl.onload = () => resolve(current());
+        imgEl.onerror = () => { if (current()) showFallback(); resolve(false); };
+        imgEl.src = src.url;
+      });
+    }
+
+    // Iconify: hide the <img> but leave any existing paint in place until the
+    // batch resolves, so re-rendering doesn't flash "?" on every keystroke.
+    imgEl.removeAttribute("src");
+    imgEl.style.display = "none";
+    return loadIconifyIcon(src.prefix, src.name).then((entry) => {
+      if (!current()) return false;
+      if (!entry) { showFallback(); return false; }
+      const holder = document.createElement("span");
+      holder.innerHTML = svgMarkup(entry);
+      const svg = holder.firstElementChild;
+      if (!svg) { showFallback(); return false; }
+      dropSvg();
+      if (src.color) svg.style.color = src.color;
+      if (fallbackEl) fallbackEl.style.display = "none";
+      slot.insertBefore(svg, imgEl.nextSibling);
+      return true;
+    });
   }
 
   // ---- Load / build state ----
@@ -326,7 +459,7 @@
     const sub = cfg.href || cfg.description || cfg.ping || "";
     $(".svc-sub", node).textContent = sub;
     $(".svc-sub", node).title = sub;
-    setIconImg($(".svc-icon img", node), $(".svc-icon .icon-fallback", node), cfg.icon, { height: 28 });
+    renderIcon($(".svc-icon img", node), $(".svc-icon .icon-fallback", node), cfg.icon);
   }
 
   function cardEl(s) {
@@ -611,7 +744,7 @@
   }
 
   function updateEditorIconPreview() {
-    setIconImg($("#iconPreview"), $("#iconPreviewFallback"), $("#f_icon").value, { height: 32 });
+    renderIcon($("#iconPreview"), $("#iconPreviewFallback"), $("#f_icon").value);
     refreshIconColorUI();
   }
 
@@ -742,13 +875,11 @@
           .slice(0, 24);
         const icons = await iconifySearch(q, { limit: 120 });
         if (seq !== searchSeq) return;
-        dash.forEach((n) =>
-          addIconCell(`${DASH}/svg/${n}`, n.replace(/\.svg$/, ""), n, "DASH")
-        );
+        dash.forEach((n) => addIconCell(n, n.replace(/\.svg$/, ""), "DASH"));
         icons.forEach((full) => {
           const [prefix, name] = full.split(":");
           const mapped = iconifyToHomepage(prefix, name);
-          addIconCell(mapped.preview, name, mapped.value, mapped.badge);
+          addIconCell(mapped.value, name, mapped.badge);
         });
         status.textContent = `${dash.length + icons.length} result(s) across all sources`;
       } else if (activeIconSrc === "dashboard") {
@@ -758,10 +889,8 @@
           .slice(0, 200);
         if (seq !== searchSeq) return;
         status.textContent = `${names.length} dashboard icon(s)${q ? "" : " (type to filter)"}`;
-        names.forEach((n) => {
-          const value = n; // already like "plex.svg"
-          addIconCell(`${DASH}/svg/${n}`, n.replace(/\.svg$/, ""), value, "DASH");
-        });
+        // Values are already like "plex.svg", which is what Homepage wants.
+        names.forEach((n) => addIconCell(n, n.replace(/\.svg$/, ""), "DASH"));
       } else if (activeIconSrc === "mdi") {
         if (!q) { status.textContent = "Type to search Material Design Icons…"; return; }
         const icons = await iconifySearch(q, { prefix: "mdi", limit: 120 });
@@ -769,9 +898,7 @@
         status.textContent = `${icons.length} MDI result(s)`;
         icons.forEach((full) => {
           const name = full.split(":")[1];
-          const col = mdiUseColor ? mdiColor : null;
-          const value = mdiUseColor ? `mdi-${name}-${mdiColor}` : `mdi-${name}`;
-          addIconCell(iconifyUrl("mdi", name, { height: 32, color: col }), name, value, "MDI");
+          addIconCell(mdiUseColor ? `mdi-${name}-${mdiColor}` : `mdi-${name}`, name, "MDI");
         });
       } else if (activeIconSrc === "fa") {
         if (!q) { status.textContent = "Type to search Font Awesome (free) icons…"; return; }
@@ -790,7 +917,7 @@
           icons.forEach((full) => {
             const name = full.split(":")[1];
             count++;
-            addIconCell(iconifyUrl(prefix, name, { height: 32 }), `${hpPrefix}-${name}`, `${hpPrefix}-${name}`, "FA");
+            addIconCell(`${hpPrefix}-${name}`, `${hpPrefix}-${name}`, "FA");
           });
         });
         status.textContent = `${count} Font Awesome result(s)`;
@@ -804,10 +931,13 @@
           (col ? ` recolored ${col}` : "");
         icons.forEach((full) => {
           const [prefix, name] = full.split(":");
-          const url = col
-            ? `${ICONIFY}/${prefix}/${name}.svg?color=${encodeURIComponent(col)}`
-            : `${ICONIFY}/${prefix}/${name}.svg`;
-          addIconCell(iconifyUrl(prefix, name, { height: 32, color: col }), full, url, "SVG");
+          addIconCell(
+            col
+              ? `${ICONIFY}/${prefix}/${name}.svg?color=${encodeURIComponent(col)}`
+              : `${ICONIFY}/${prefix}/${name}.svg`,
+            full,
+            "SVG"
+          );
         });
       }
       if (!results.children.length && q) status.textContent = "No icons found.";
@@ -816,7 +946,9 @@
     }
   }
 
-  function addIconCell(previewUrl, label, value, badge) {
+  // The cell previews the value it would store, so what you see is what the
+  // editor gets — colour included.
+  function addIconCell(value, label, badge) {
     const cell = document.createElement("div");
     cell.className = "icon-cell";
     cell.title = value;
@@ -826,18 +958,25 @@
       b.textContent = badge;
       cell.appendChild(b);
     }
+    const art = document.createElement("span");
+    art.className = "cell-art";
     const img = document.createElement("img");
     img.loading = "lazy";
-    img.src = previewUrl;
     img.alt = label;
-    img.onerror = () => cell.remove();
+    const fb = document.createElement("span");
+    fb.className = "icon-fallback";
+    fb.textContent = "?";
+    art.appendChild(img);
+    art.appendChild(fb);
     const lab = document.createElement("span");
     lab.className = "cell-label";
     lab.textContent = label;
-    cell.appendChild(img);
+    cell.appendChild(art);
     cell.appendChild(lab);
     cell.addEventListener("click", () => chooseIcon(value));
     $("#iconResults").appendChild(cell);
+    // A result that won't render is noise — drop it rather than show a "?" grid.
+    renderIcon(img, fb, value).then((ok) => { if (!ok) cell.remove(); });
   }
 
   function addUploadCell(item) {
@@ -855,15 +994,22 @@
     });
     cell.appendChild(del);
 
+    const art = document.createElement("span");
+    art.className = "cell-art";
     const img = document.createElement("img");
     img.loading = "lazy";
-    img.src = item.ref; // served by this app at /icons/<name>
     img.alt = item.name;
+    const fb = document.createElement("span");
+    fb.className = "icon-fallback";
+    fb.textContent = "?";
+    art.appendChild(img);
+    art.appendChild(fb);
     const lab = document.createElement("span");
     lab.className = "cell-label";
     lab.textContent = item.name;
-    cell.appendChild(img);
+    cell.appendChild(art);
     cell.appendChild(lab);
+    renderIcon(img, fb, item.ref); // served by this app at /icons/<name>
     cell.addEventListener("click", () => chooseIcon(item.ref));
     $("#iconResults").appendChild(cell);
   }
@@ -937,20 +1083,18 @@
   function iconifyToHomepage(prefix, name) {
     const col = mdiUseColor ? mdiColor : null;
     if (prefix === "mdi") {
-      const value = col ? `mdi-${name}-${col}` : `mdi-${name}`;
-      return { value, badge: "MDI", preview: iconifyUrl("mdi", name, { height: 32, color: col }) };
+      return { value: col ? `mdi-${name}-${col}` : `mdi-${name}`, badge: "MDI" };
     }
-    if (prefix === "fa6-solid") return { value: `fas-${name}`, badge: "FA", preview: iconifyUrl(prefix, name, { height: 32 }) };
-    if (prefix === "fa6-regular") return { value: `far-${name}`, badge: "FA", preview: iconifyUrl(prefix, name, { height: 32 }) };
-    if (prefix === "fa6-brands") return { value: `fab-${name}`, badge: "FA", preview: iconifyUrl(prefix, name, { height: 32 }) };
+    if (prefix === "fa6-solid") return { value: `fas-${name}`, badge: "FA" };
+    if (prefix === "fa6-regular") return { value: `far-${name}`, badge: "FA" };
+    if (prefix === "fa6-brands") return { value: `fab-${name}`, badge: "FA" };
     if (prefix === "simple-icons") {
-      const value = col ? `si-${name}-${col}` : `si-${name}`;
-      return { value, badge: "SI", preview: iconifyUrl(prefix, name, { height: 32, color: col }) };
+      return { value: col ? `si-${name}-${col}` : `si-${name}`, badge: "SI" };
     }
     const url = col
       ? `${ICONIFY}/${prefix}/${name}.svg?color=${encodeURIComponent(col)}`
       : `${ICONIFY}/${prefix}/${name}.svg`;
-    return { value: url, badge: "SVG", preview: iconifyUrl(prefix, name, { height: 32, color: col }) };
+    return { value: url, badge: "SVG" };
   }
 
   function chooseIcon(value) {
@@ -961,16 +1105,20 @@
 
   async function ensureDashboardList() {
     if (dashboardList) return;
-    const res = await fetch(`${DASH}@main/tree.json`);
+    const res = await fetch("/api/dashboard/tree");
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not load the dashboard icon index");
     dashboardList = (data.svg || []).slice();
   }
 
+  // Search goes through our cache too: the upstream endpoint shares the rate
+  // limit that made every preview fail.
   async function iconifySearch(query, { prefix = null, limit = 100 } = {}) {
-    let u = `${ICONIFY}/search?query=${encodeURIComponent(query)}&limit=${limit}`;
-    if (prefix) u += `&prefix=${prefix}`;
+    let u = `/api/iconify/search?query=${encodeURIComponent(query)}&limit=${limit}`;
+    if (prefix) u += `&prefix=${encodeURIComponent(prefix)}`;
     const res = await fetch(u);
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Icon search failed");
     return data.icons || [];
   }
 

@@ -319,6 +319,13 @@ html, body {
 .svc-icon img { width: 24px; height: 24px; object-fit: contain; }
 .svc-icon img[src=""], .svc-icon img:not([src]) { display: none; }
 .icon-fallback { color: var(--muted); font-weight: 700; font-size: 13px; }
+
+/* Iconify icons are injected as inline <svg> rather than fetched one-by-one as
+   images. They paint with currentColor, which is what makes the editor's color
+   control instant — setting `color` needs no new request. */
+.svc-icon svg { width: 24px; height: 24px; color: var(--text); }
+.icon-preview-btn svg { width: 28px; height: 28px; color: var(--text); }
+.icon-cell .cell-art svg { width: 30px; height: 30px; color: var(--text); }
 .svc-main { flex: 1; min-width: 0; }
 .svc-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .svc-sub {
@@ -478,6 +485,7 @@ html, body {
 }
 .icon-cell:hover { border-color: var(--accent); background: var(--bg-elev2); transform: translateY(-1px); }
 .icon-cell img { width: 30px; height: 30px; object-fit: contain; }
+.icon-cell .cell-art { width: 30px; height: 30px; display: grid; place-items: center; }
 .icon-cell { position: relative; }
 .icon-cell .cell-label {
   font-size: 10px; color: var(--muted); text-align: center;

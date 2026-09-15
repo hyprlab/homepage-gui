@@ -9,6 +9,35 @@ GitHub and inside the app (click the version in the sidebar footer → **What's 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-15
+
+### Fixed
+- **Icons no longer break once Iconify rate-limits you.** The editor pointed `<img src>`
+  straight at `api.iconify.design`, one request per icon. A single search in the icon
+  picker fired ~130 of them, which trips Cloudflare's rate limit (error 1015) for the
+  whole source IP for several minutes. The 429s come back as `text/plain`, Chrome's
+  Opaque Response Blocking refuses to hand those to an `<img>`, and every preview
+  silently fell back to `?` — the icon chip after picking, and the service cards.
+  - Colouring an MDI icon looked *specifically* broken, because adding `-#hex` produces
+    a URL that has never been cached, so it always went to the network and always got
+    a 429 — while the uncoloured icon still rendered from browser cache.
+
+### Added
+- **Disk-cached icon proxy.** Iconify icon bodies, search results and the dashboard-icons
+  index are now fetched by the app, sanitized, and cached under `ICON_CACHE_DIR`
+  (defaults to a folder in `DATA_DIR`). Icons are requested in batches — one upstream
+  call per prefix instead of one per icon — so a picker search costs a handful of
+  requests rather than ~130, and a warm cache costs none at all. If upstream does
+  rate-limit, the app honours `Retry-After`, keeps serving what it has, and says so
+  instead of blanking every preview.
+- Configurable with `ICON_CACHE_DIR` and `ICON_CACHE_MAX` (default 20,000 icons, ~8 MB).
+
+### Changed
+- Iconify icons render as inline `<svg>` rather than as `<img>`. They paint with
+  `currentColor`, so the editor's colour control now applies instantly with **no**
+  network request, and an uncoloured icon follows the theme instead of being black
+  on a dark background.
+
 ## [0.2.0] - 2026-08-12
 
 ### Added
@@ -112,7 +141,8 @@ Initial public release.
 - Self-hosted **Inter** font, cache-busted static assets, and an in-app **Source** link
   (AGPL §13).
 
-[Unreleased]: https://github.com/hyprlab/homepage-gui/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/hyprlab/homepage-gui/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/hyprlab/homepage-gui/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hyprlab/homepage-gui/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/hyprlab/homepage-gui/compare/v1.1.2...v0.1.3
 [1.1.2]: https://github.com/hyprlab/homepage-gui/compare/v1.1.1...v1.1.2

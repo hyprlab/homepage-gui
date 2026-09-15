@@ -93,7 +93,7 @@ git push origin "$TAG"
 # Extract this version's notes from CHANGELOG.md (everything between its
 # header and the next "## " header) for the GitHub release body.
 NOTES="$(awk -v v="## [$VERSION]" '
-  $0 ~ v {grab=1; next}
+  index($0, v) == 1 {grab=1; next}
   grab && /^## / {exit}
   grab {print}
 ' CHANGELOG.md)"

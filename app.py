@@ -22,6 +22,7 @@ from werkzeug.utils import secure_filename
 
 import auth
 import setup_wizard
+from icon_cache import IconCache, RateLimited
 from models import User, db
 from yaml_store import ServicesStore, COMMON_FIELDS
 
@@ -59,6 +60,13 @@ os.makedirs(ICONS_DIR, exist_ok=True)
 # dedicated volume if you'd rather keep them out of the Homepage config.
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(CONFIG_DIR, ".homepage-gui"))
 os.makedirs(DATA_DIR, exist_ok=True)
+
+# Iconify previews are proxied through this app and cached on disk. Pointing the
+# browser straight at api.iconify.design meant one request per icon — a single
+# picker search fired ~130 and tripped Cloudflare's rate limit for the whole
+# source IP, after which every preview fell back to "?".
+ICON_CACHE_DIR = os.environ.get("ICON_CACHE_DIR") or os.path.join(DATA_DIR, "icon-cache")
+ICON_CACHE_MAX = int(os.environ.get("ICON_CACHE_MAX") or "20000")
 
 
 def _secret_key():
@@ -130,6 +138,8 @@ app.register_blueprint(setup_wizard.bp)
 store = ServicesStore(
     SERVICES_PATH, BACKUP_DIR, keep=KEEP_BACKUPS, keep_days=KEEP_BACKUP_DAYS
 )
+
+icons_cache = IconCache(ICON_CACHE_DIR, max_icons=ICON_CACHE_MAX)
 
 
 class _UnixHTTPConnection(http.client.HTTPConnection):
@@ -346,6 +356,58 @@ def restore_backup():
         return jsonify({"error": "Backup not found"}), 404
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+
+
+# ---------------------------------------------------------------------------
+# Iconify / dashboard-icons proxy (disk-cached)
+# ---------------------------------------------------------------------------
+@app.route("/api/iconify/icons", methods=["GET"])
+def iconify_icons():
+    """Resolve a batch of `prefix:name` refs to inline-SVG bodies."""
+    raw = request.args.get("icons", "")
+    refs = [r.strip() for r in raw.split(",") if r.strip()][:200]
+    if not refs:
+        return jsonify({"icons": {}, "missing": []})
+    found, missing, limited, retry = icons_cache.get_icons(refs)
+    return jsonify(
+        {"icons": found, "missing": missing, "rateLimited": limited, "retryAfter": retry}
+    )
+
+
+@app.route("/api/iconify/search", methods=["GET"])
+def iconify_search():
+    query = request.args.get("query", "").strip()
+    if not query:
+        return jsonify({"icons": []})
+    prefix = request.args.get("prefix") or None
+    try:
+        limit = max(1, min(int(request.args.get("limit", "100")), 200))
+    except ValueError:
+        limit = 100
+    try:
+        data, stale = icons_cache.search(query, prefix, limit)
+    except RateLimited as exc:
+        return jsonify({"error": "Iconify is rate limiting this host.",
+                        "rateLimited": True, "retryAfter": exc.retry_after}), 503
+    except Exception as exc:  # noqa: BLE001 - surface upstream trouble to the UI
+        return jsonify({"error": str(exc)}), 502
+    data = dict(data or {})
+    data["stale"] = stale
+    return jsonify(data)
+
+
+@app.route("/api/dashboard/tree", methods=["GET"])
+def dashboard_tree():
+    try:
+        data, stale = icons_cache.dashboard_tree()
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 502
+    return jsonify({"svg": (data or {}).get("svg", []), "stale": stale})
+
+
+@app.route("/api/iconify/stats", methods=["GET"])
+def iconify_stats():
+    return jsonify(icons_cache.stats())
 
 
 # ---------------------------------------------------------------------------
