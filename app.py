@@ -36,7 +36,7 @@ BACKUP_DIR = os.environ.get(
 KEEP_BACKUPS = int(os.environ.get("KEEP_BACKUPS", "40"))
 KEEP_BACKUP_DAYS = int(os.environ.get("KEEP_BACKUP_DAYS", "14"))
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 # Public source location (AGPL §13). Override if you run a modified version so
 # your network users can reach *your* corresponding source.
 SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/hyprlab/homepage-gui")
