@@ -5,9 +5,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 This file is the single source of truth for release notes — it is rendered both on
-GitHub and inside the app (click the version in the sidebar footer → **What's new**).
+GitHub and inside the app (click the version in the sidebar footer → **About** → **Release notes**).
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-09-15
+
+### Added
+- **The setup wizard now finds your `services.yaml` for you.** A new *Connect to Homepage*
+  step lists every candidate it can find, says why each one turned up, and lets you confirm
+  the right one — so a fresh install no longer depends on guessing `HOST_CONFIG_DIR`
+  correctly before the first start. It looks in two independent places:
+  - **Every folder mounted into the container** is walked for a `services.yaml`, ranked by
+    whether Homepage's other config files (`settings.yaml`, `widgets.yaml`, `bookmarks.yaml`,
+    …) sit beside it. The config directory can be mounted anywhere.
+  - **Docker**, when its socket is mounted: the Engine API says which container is Homepage
+    and which *host* directory it has bound to `/app/config`. Matched against the host
+    directories bound into this container, that identifies the file exactly, and shows its
+    host path next to the container path.
+  - If Homepage's config directory isn't shared with this container yet, the wizard names the
+    host path and prints the compose line to add — the one thing the old flow couldn't tell
+    you. The scan starts as the wizard opens, so the step is ready by the time you reach it.
+- **An About dialog**, opened by clicking the version in the sidebar footer: what this is,
+  links to the project website, the source repository and Homepage itself, the release notes
+  on demand, and the copyright and licence.
+- **A Homepage connection dialog**, opened by clicking the path in the header. Same picker,
+  for changing the file later, after a move, or on an install that predates the wizard. It
+  also detects and sets the Homepage container name used by **Restart Homepage**.
+- Both are backed by new endpoints — `GET /api/connection`, `GET /api/connection/detect`
+  and `POST /api/connection` — and the choice is stored in `DATA_DIR/settings.json`, so it
+  survives container recreates and needs no `.env` edit.
+
+### Changed
+- The configured path is now resolved per request instead of being frozen at import, so
+  switching files takes effect immediately, with no restart.
+- Backups follow the file: with no explicit `BACKUP_DIR`, they're written to
+  `.homepage-gui-backups` beside whichever `services.yaml` is in use (unchanged for the
+  default layout).
+- `SERVICES_PATH` and `HOMEPAGE_CONTAINER` are now defaults rather than the last word — a
+  choice made in the app takes precedence.
+- A missing `services.yaml` opens the connection dialog instead of leaving an empty canvas
+  behind an error toast.
+
+### Fixed
+- An unwritable or not-yet-created backup directory no longer stops the app from reading a
+  config file it can otherwise open.
 
 ## [0.3.0] - 2026-09-15
 
@@ -141,7 +183,8 @@ Initial public release.
 - Self-hosted **Inter** font, cache-busted static assets, and an in-app **Source** link
   (AGPL §13).
 
-[Unreleased]: https://github.com/hyprlab/homepage-gui/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/hyprlab/homepage-gui/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/hyprlab/homepage-gui/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/hyprlab/homepage-gui/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hyprlab/homepage-gui/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/hyprlab/homepage-gui/compare/v1.1.2...v0.1.3

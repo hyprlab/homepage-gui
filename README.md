@@ -23,6 +23,7 @@
   - [2. Configure `.env`](#2-configure-env)
   - [3. Enable custom icon uploads (optional)](#3-enable-custom-icon-uploads-optional)
   - [4. Start it](#4-start-it)
+- [Finding your `services.yaml`](#finding-your-servicesyaml)
 - [Configuration reference](#configuration-reference)
 - [The login](#the-login)
 - [Using the app](#using-the-app)
@@ -43,7 +44,8 @@ Homepage's `services.yaml` is hand-edited YAML: a list of sections, each contain
 of services with fields like `icon`, `href`, `description`, `ping`, and widgets. Homepage GUI
 gives that file a fast, modern editor:
 
-- Mount your existing Homepage `config` directory into the container.
+- Mount your existing Homepage `config` directory into the container — the setup
+  wizard finds `services.yaml` for you, wherever it lives.
 - Edit `services.yaml` visually in your browser, on any LAN device.
 - Saves write **straight back** to the same file Homepage reads, with a timestamped backup
   every time. Homepage hot-reloads, so changes appear immediately (only new **icon uploads**
@@ -74,14 +76,20 @@ gives that file a fast, modern editor:
 - **Sign-in, set up on first boot** — a short wizard creates your admin account; after that
   the whole app (UI and API) is behind a login, with optional
   [Cloudflare Turnstile](#the-login). See [The login](#the-login).
-- **In-app release notes** (click the version in the sidebar footer).
+- **Finds your config by itself** — the same wizard scans every folder mounted into the
+  container for a `services.yaml`, and asks Docker which container is Homepage and which
+  host directory it uses, so you pick your file from a list instead of typing a path. If
+  that directory isn't mounted yet, it tells you the exact host path and compose line to
+  add. See [Finding your `services.yaml`](#finding-your-servicesyaml).
+- **About dialog** (click the version in the sidebar footer) — links to the project site,
+  the source, and Homepage itself, plus the full release notes.
 - Self-hosted **Inter** font and cache-busted assets; in-app **Source** link (AGPL §13).
 
 ## Requirements
 
 - A host running **Docker** and **Docker Compose v2** (`docker compose …`).
 - An existing **Homepage** install whose `config` directory (containing `services.yaml`) is
-  on the same host.
+  on the same host. You don't need to know where it is — the setup wizard works that out.
 - A browser with internet access for icon **search/preview** (Iconify & jsDelivr CDNs — the
   same ones Homepage uses). Editing and saving work fully offline.
 
@@ -108,7 +116,6 @@ services:
     user: "0:0"                       # needed to write a root-owned services.yaml
     environment:
       - HOMEPAGE_CONFIG_DIR=/config
-      - BACKUP_DIR=/config/.homepage-gui-backups
       - KEEP_BACKUPS=40
       - KEEP_BACKUP_DAYS=14
       - ICONS_DIR=/icons
@@ -136,6 +143,11 @@ HOST_ICONS_DIR=/path/to/homepage/icons     # shared custom-icons folder (see ste
 HOST_PORT=5005                             # browse to http://<host>:5005
 HOMEPAGE_CONTAINER=homepage                # your Homepage container's name
 ```
+
+> **Don't know your config path?** Start it anyway. With the Docker socket mounted, the
+> setup wizard asks Docker where your Homepage container keeps its config and shows you
+> the exact host path — paste that into `HOST_CONFIG_DIR`, run `docker compose up -d`
+> again, and the wizard will pick the file up.
 
 > **Tip:** verify the resolved config before starting with `docker compose config`.
 
@@ -168,8 +180,39 @@ docker compose up -d
 
 Open **`http://<host>:5005`** (the port from `HOST_PORT`) on any device on your LAN.
 
-The first visit runs a short **setup wizard** that creates your admin account — see
-[The login](#the-login). After that you'll be signed in and looking at your dashboard.
+The first visit runs a short **setup wizard**: it creates your admin account (see
+[The login](#the-login)), then shows you the `services.yaml` files it found and lets you
+confirm which one to edit. After that you'll be signed in and looking at your dashboard.
+
+## Finding your `services.yaml`
+
+The setup wizard's second step answers "which file am I editing?" for you, so a new
+install doesn't hinge on getting a path right in `.env` first. It looks in two places:
+
+1. **Every folder mounted into the container.** Each one is walked for a `services.yaml`,
+   and a match is ranked higher when Homepage's other config files (`settings.yaml`,
+   `widgets.yaml`, `bookmarks.yaml`, …) sit beside it. Mount your config directory
+   anywhere you like — the scan finds it.
+2. **Docker, if its socket is mounted.** The Engine API says which container is Homepage
+   and which *host* directory it has bound to `/app/config`. Cross-referenced with the
+   host directories bound into this container, that pins down the file exactly — and
+   names your Homepage container for the **Restart Homepage** button at the same time.
+
+Each candidate is listed with why it turned up, its path on the host, and whether this
+container can write to it. Pick one, or type a path yourself. If Homepage's config
+directory isn't shared with this container yet, the wizard says so and prints the compose
+line to add.
+
+Your choice is saved in `DATA_DIR/settings.json` and takes precedence over
+`SERVICES_PATH` / `HOMEPAGE_CONFIG_DIR`, so it survives container recreates without an
+`.env` edit. To change it later — or if the file moves — click the path under the
+**Homepage GUI** title in the header to reopen the same picker. Backups follow the file:
+unless you set `BACKUP_DIR` explicitly, they're written to `.homepage-gui-backups` next to
+whichever `services.yaml` is in use.
+
+> The scan only sees what's mounted into the container; it can't read the rest of your
+> host. That's the point of the Docker lookup — it can name a path the container can't
+> open, so you know what to mount.
 
 ## Configuration reference
 
@@ -180,16 +223,16 @@ These are set in `compose.yaml`'s `environment:` (container-side) and `.env` (ho
 | Variable | Default | Purpose |
 |---|---|---|
 | `HOMEPAGE_CONFIG_DIR` | `/config` | Directory (inside the container) holding `services.yaml` |
-| `SERVICES_PATH` | `$HOMEPAGE_CONFIG_DIR/services.yaml` | Override the exact file path |
-| `BACKUP_DIR` | `$HOMEPAGE_CONFIG_DIR/.homepage-gui-backups` | Where backups are written |
+| `SERVICES_PATH` | `$HOMEPAGE_CONFIG_DIR/services.yaml` | Starting point for the file path — a file chosen in the app wins over it |
+| `BACKUP_DIR` | *(beside `services.yaml`)* | Where backups are written; set it to pin them to one folder |
 | `KEEP_BACKUPS` | `40` | Hard cap on number of backups (`0` = unlimited) |
 | `KEEP_BACKUP_DAYS` | `14` | Auto-purge backups older than N days (`0` = keep forever) |
 | `ICONS_DIR` | `/icons` | Where uploaded icons are stored (shared with Homepage) |
-| `HOMEPAGE_CONTAINER` | `homepage` | Container the GUI restarts to load new icons |
+| `HOMEPAGE_CONTAINER` | `homepage` | Container the GUI restarts to load new icons (also detectable in-app) |
 | `DOCKER_SOCK` | `/var/run/docker.sock` | Docker socket used for the restart |
 | `SOURCE_URL` | this repo | Source link shown in-app (set to your fork if modified) |
 | `PORT` | `5000` | In-container listen port (host port is mapped in compose) |
-| `DATA_DIR` | `$HOMEPAGE_CONFIG_DIR/.homepage-gui` | Holds the account database and session key |
+| `DATA_DIR` | `$HOMEPAGE_CONFIG_DIR/.homepage-gui` | Holds the account database, session key and `settings.json` |
 | `SECRET_KEY` | auto | Session signing key; generated and persisted in `DATA_DIR` if unset |
 | `TURNSTILE_SITE_KEY` | *(empty)* | Cloudflare Turnstile site key — empty disables the challenge |
 | `TURNSTILE_SECRET_KEY` | *(empty)* | Turnstile secret key (both must be set to enable it) |
@@ -201,7 +244,7 @@ These are set in `compose.yaml`'s `environment:` (container-side) and `.env` (ho
 
 | Variable | Example | Purpose |
 |---|---|---|
-| `HOST_CONFIG_DIR` | `/srv/homepage/config` | Host path mounted to `/config` |
+| `HOST_CONFIG_DIR` | `/srv/homepage/config` | Host path mounted to `/config` (the wizard can tell you this one) |
 | `HOST_ICONS_DIR` | `/srv/homepage/icons` | Host path mounted to `/icons` |
 | `HOST_PORT` | `5005` | Host port mapped to the container's `5000` |
 | `HOMEPAGE_CONTAINER` | `homepage` | Passed through for the restart feature |

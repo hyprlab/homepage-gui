@@ -340,7 +340,16 @@
     try {
       const res = await fetch("/api/config");
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load");
+      if (!res.ok) {
+        // Nothing at the configured path: open the connection dialog rather
+        // than leaving an empty canvas behind an error toast.
+        if (data.missing_file) {
+          toast(data.error, "err");
+          showConnection();
+          return;
+        }
+        throw new Error(data.error || "Failed to load");
+      }
       buildState(data);
       render();
       setDirty(false);
@@ -1214,6 +1223,7 @@
     s = escapeHtml(s);
     s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
     s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
     s = s.replace(
       /\[([^\]]+)\]\((https?:[^)]+)\)/g,
       '<a href="$2" target="_blank" rel="noopener">$1</a>'
@@ -1242,15 +1252,109 @@
     return out.join("\n");
   }
 
-  async function showChangelog() {
+  // ---- About ----
+  // The links and copyright are server-rendered in the dialog; only the
+  // release notes are fetched, and only once someone asks to read them.
+  let notesLoaded = false;
+
+  function openAbout() {
+    $("#aboutOverlay").classList.remove("hidden");
+  }
+  function closeAbout() {
+    $("#aboutOverlay").classList.add("hidden");
+  }
+
+  async function loadReleaseNotes() {
+    if (notesLoaded) return;
+    const body = $("#aboutNotesBody");
     try {
       const res = await fetch("/api/changelog");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load");
-      openGeneric("Release notes", `<div class="changelog"></div>`);
-      $("#genericBody .changelog").innerHTML = renderMarkdown(data.markdown || "");
+      // Skip the file's preamble (what Keep a Changelog is, where the file
+      // lives) and start at the first version — that's what a reader wants.
+      const md = data.markdown || "";
+      const firstVersion = md.search(/^## /m);
+      body.innerHTML = renderMarkdown(firstVersion > 0 ? md.slice(firstVersion) : md);
+      notesLoaded = true;
     } catch (e) {
-      toast("Changelog error: " + e.message, "err");
+      body.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "Couldn't load the release notes: " + e.message;
+      body.appendChild(p);
+    }
+  }
+
+  // ---- Homepage connection ----
+  // Which services.yaml this edits, and which container "Restart Homepage"
+  // restarts. Both are detected in the setup wizard; this is where they get
+  // changed afterwards (and where a fresh install lands if the file moved).
+  let connPicker = null;
+
+  async function showConnection() {
+    openGeneric(
+      "Homepage connection",
+      `<p class="hint">This editor writes to the file below. Pick a different one
+         if it isn't the <code>services.yaml</code> your dashboard reads.</p>
+       <div id="connMount"></div>
+       <label class="field conn-field">
+         <span>Homepage container <small class="muted">(what “Restart Homepage” restarts)</small></span>
+         <input type="text" id="connContainer" spellcheck="false" autocomplete="off" placeholder="homepage" />
+         <span class="hint" id="connContainerHint"></span>
+       </label>
+       <div class="conn-actions">
+         <button class="btn primary" id="connSave">Save &amp; reload</button>
+       </div>`
+    );
+    $("#connSave").addEventListener("click", saveConnection);
+
+    connPicker = new ConnectionPicker($("#connMount"), {
+      detectUrl: "/api/connection/detect",
+      saveUrl: "/api/connection",
+      csrf: CSRF,
+    });
+
+    try {
+      const state = await (await fetch("/api/connection")).json();
+      $("#connContainer").value = state.homepage_container || "";
+    } catch (e) {
+      /* the field just starts empty */
+    }
+    await connPicker.detect();
+
+    // Docker often knows the container's real name better than the config does.
+    const found = connPicker.data?.docker?.homepage?.name;
+    const hint = $("#connContainerHint");
+    if (hint && found && found !== $("#connContainer").value) {
+      hint.innerHTML = `Detected <code></code> on this host · <button type="button" class="linklike">use it</button>`;
+      $("code", hint).textContent = found;
+      $("button", hint).addEventListener("click", () => {
+        $("#connContainer").value = found;
+        hint.textContent = "";
+      });
+    }
+  }
+
+  async function saveConnection() {
+    if (dirty && !confirm("You have unsaved changes. Switching files discards them. Continue?")) return;
+    const btn = $("#connSave");
+    btn.disabled = true;
+    try {
+      const state = await connPicker.save({
+        homepage_container: $("#connContainer").value.trim(),
+      });
+      const label = $("#cfgPath");
+      label.textContent = state.services_path;
+      label.title = state.services_path + " — click to change which file this edits";
+      closeGeneric();
+      setDirty(false);
+      await loadConfig();
+      toast("Now editing " + state.services_path, "ok");
+    } catch (e) {
+      // The picker reports its own errors inline, next to the choice.
+    } finally {
+      btn.disabled = false;
     }
   }
 
@@ -1365,7 +1469,17 @@
       e.target.value = "";
     });
     $("#restartHomepageBtn").addEventListener("click", restartHomepage);
-    $("#changelogBtn").addEventListener("click", showChangelog);
+    $("#cfgPath").addEventListener("click", showConnection);
+
+    // About
+    $("#aboutBtn").addEventListener("click", openAbout);
+    $("#aboutClose").addEventListener("click", closeAbout);
+    $("#aboutOverlay").addEventListener("click", (e) => {
+      if (e.target.id === "aboutOverlay") closeAbout();
+    });
+    $("#aboutNotes").addEventListener("toggle", (e) => {
+      if (e.target.open) loadReleaseNotes();
+    });
     // Drag-and-drop upload onto the results area while on the Uploads tab.
     const results = $("#iconResults");
     results.addEventListener("dragover", (e) => {
@@ -1396,6 +1510,7 @@
       if (e.key === "Escape") {
         if (!$("#iconOverlay").classList.contains("hidden")) closeIconPicker();
         else if (!$("#editorOverlay").classList.contains("hidden")) closeEditor();
+        else if (!$("#aboutOverlay").classList.contains("hidden")) closeAbout();
         else if (!$("#genericOverlay").classList.contains("hidden")) closeGeneric();
       }
     });

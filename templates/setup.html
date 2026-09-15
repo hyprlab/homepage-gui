@@ -8,26 +8,26 @@
   <link rel="icon" type="image/png" href="{{ static_url('img/favicon.png') }}" />
   <link rel="apple-touch-icon" href="{{ static_url('img/apple-touch-icon.png') }}" />
   <link rel="stylesheet" href="{{ static_url('css/style.css') }}" />
+  <script src="{{ static_url('js/connection.js') }}"></script>
 </head>
 <body class="login-body">
-  <main class="login-wrap">
-    <div class="login-card wizard" id="wizard">
+  <main class="login-wrap login-wrap-wide">
+    <div class="login-card wizard wizard-wide is-roomy" id="wizard">
       <img class="login-mark" src="{{ static_url('img/logo.png') }}" alt="" />
       <h1>Homepage GUI</h1>
 
       <div class="wiz-dots" aria-hidden="true">
-        <span class="wiz-dot is-active"></span><span class="wiz-dot"></span><span class="wiz-dot"></span>
+        <span class="wiz-dot is-active"></span><span class="wiz-dot"></span><span class="wiz-dot"></span><span class="wiz-dot"></span>
       </div>
 
       <!-- Step 1 · Welcome -->
       <section class="wiz-step is-active" data-step="0">
-        <h2 class="wiz-title">Welcome</h2>
-        <p class="wiz-text">Let's secure this editor — it takes about a minute.</p>
-        <ul class="wiz-list">
-          <li>Create the admin account</li>
-          <li>Sign in and start editing <code>services.yaml</code></li>
-        </ul>
-        <p class="hint">This is the only account. Anyone with it can edit your dashboard.</p>
+        <div class="wiz-body">
+          <p class="wiz-text">Homepage GUI is a graphical configuration companion to Homepage
+            (<a href="https://gethomepage.dev" target="_blank" rel="noopener">gethomepage.dev</a>)
+            and requires an existing Homepage install to function. Please install it first
+            before continuing.</p>
+        </div>
         <div class="wiz-nav">
           <button class="btn primary btn-block" data-next>Get started</button>
         </div>
@@ -35,6 +35,7 @@
 
       <!-- Step 2 · Admin account -->
       <section class="wiz-step" data-step="1">
+        <div class="wiz-body">
         <h2 class="wiz-title">Create the admin account</h2>
         <p class="wiz-text">Used to sign in to this editor. Store it in your password
           manager — there's no reset link.</p>
@@ -58,6 +59,7 @@
           </label>
         </div>
         <p class="form-error" id="wiz-error-1" hidden></p>
+        </div>
         <div class="wiz-nav">
           <button class="btn ghost" data-back>Back</button>
           <button class="btn primary" data-next>
@@ -67,13 +69,32 @@
         </div>
       </section>
 
-      <!-- Step 3 · Done -->
+      <!-- Step 3 · Connect to Homepage -->
       <section class="wiz-step" data-step="2">
-        <h2 class="wiz-title">You're all set</h2>
-        <p class="wiz-text">You're signed in as <strong id="wiz-who"></strong>. This editor
-          writes to:</p>
-        <p class="wiz-path"><code>{{ services_path }}</code></p>
-        <p class="hint" id="wiz-file-note"></p>
+        <div class="wiz-body">
+          <h2 class="wiz-title">Connect to Homepage</h2>
+          <p class="wiz-text">This editor writes straight to Homepage's
+            <code>services.yaml</code>. Here's what it found on this machine.</p>
+          <div id="wiz-connection"></div>
+          <p class="form-error" id="wiz-error-2" hidden></p>
+        </div>
+        <div class="wiz-nav">
+          <button class="btn primary btn-block" data-next>
+            <span class="btn-label">Use this file</span>
+            <span class="btn-busy" hidden>Connecting…</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Step 4 · Done -->
+      <section class="wiz-step" data-step="3">
+        <div class="wiz-body">
+          <h2 class="wiz-title">You're all set</h2>
+          <p class="wiz-text">You're signed in as <strong id="wiz-who"></strong>. This editor
+            writes to:</p>
+          <p class="wiz-path"><code id="wiz-path"></code></p>
+          <p class="hint" id="wiz-file-note"></p>
+        </div>
         <div class="wiz-nav">
           <a class="btn primary btn-block" href="{{ url_for('index') }}">Open the editor</a>
         </div>
@@ -96,9 +117,11 @@
 
   function show(n) {
     current = n;
+    // First and last steps are a message and a button; they get more room.
+    document.getElementById("wizard").classList.toggle("is-roomy", n === 0 || n === 3);
     steps.forEach(function (s, i) { s.classList.toggle("is-active", i === n); });
     dots.forEach(function (d, i) { d.classList.toggle("is-active", i <= n); });
-    var focus = steps[n].querySelector("input");
+    var focus = steps[n].querySelector(".login-form input");
     if (focus) focus.focus();
   }
 
@@ -133,9 +156,29 @@
     btn.addEventListener("click", function () { show(current - 1); });
   });
 
+  // The scan walks every mounted filesystem, so it starts as soon as the
+  // wizard does — by the time the account exists the answer is cached.
+  var picker = new window.ConnectionPicker(document.getElementById("wiz-connection"), {
+    detectUrl: "/setup/detect",
+    saveUrl: "/api/connection",
+    csrf: CSRF
+  });
+  var detecting = picker.detect();
+
+  function finish(state) {
+    document.getElementById("wiz-path").textContent = state.services_path;
+    document.getElementById("wiz-file-note").textContent = !state.exists
+      ? "The file will be created on your first save."
+      : state.writable
+        ? "Found and writable — Homepage picks up changes as soon as you save."
+        : "Found, but this container can't write to it. Check the file's permissions or the mount.";
+    show(3);
+  }
+
   document.querySelectorAll("[data-next]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       if (current === 0) { show(1); return; }
+
       if (current === 1) {
         var username = document.getElementById("wiz-username").value.trim();
         var pw = document.getElementById("wiz-password").value;
@@ -154,15 +197,22 @@
           document.getElementById("wiz-who").textContent =
             document.getElementById("wiz-name").value.trim() || username;
           show(2);
-          // Report whether the target file is actually writable, so a bad
-          // mount is obvious here rather than on the first failed save.
-          return fetch("/api/health").then(function (r) { return r.json(); }).then(function (h) {
-            document.getElementById("wiz-file-note").textContent = h.exists
-              ? (h.writable ? "Found and writable." : "Found, but not writable — check the mount and file permissions.")
-              : "Not found yet — check that your Homepage config directory is mounted.";
-          });
+          return detecting; // usually already done
         }).catch(function (e) {
           err(1, e.message);
+        }).then(function () {
+          setBusy(btn, false);
+        });
+        return;
+      }
+
+      if (current === 2) {
+        err(2, null);
+        setBusy(btn, true);
+        picker.save().then(finish).catch(function (e) {
+          if (e && e.message && e.message !== "no selection" && e.message !== "declined") {
+            err(2, e.message);
+          }
         }).then(function () {
           setBusy(btn, false);
         });

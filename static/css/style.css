@@ -128,6 +128,8 @@ html, body {
   font-weight: 600;
   transition: all .15s ease;
   white-space: nowrap;
+  text-align: center;
+  text-decoration: none;
 }
 .btn:hover { border-color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -585,6 +587,9 @@ html, body {
 .wiz-step.is-active { display: flex; }
 .wiz-title { margin: 0; font-size: 16px; }
 .wiz-text { margin: -6px 0 0; font-size: 13px; line-height: 1.55; color: var(--text-dim); }
+/* Pulled up under a step title; on a step that has none, it sits on its own. */
+.wiz-step > .wiz-text:first-child { margin-top: 0; }
+.wiz-text a { color: var(--accent); }
 .wiz-text code, .wiz-list code { font-family: var(--mono); font-size: 12px; }
 .wiz-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.9; color: var(--text-dim); }
 .wiz-path {
@@ -593,6 +598,157 @@ html, body {
   border-radius: var(--radius-sm);
 }
 .wiz-path code { font-family: var(--mono); font-size: 11px; word-break: break-all; color: var(--text-dim); }
+/* The connection step can run taller than the window. Cap the card at the
+   viewport and scroll inside it, so the page itself never gets a scrollbar
+   and the step's buttons stay put. The cap is measured against the viewport,
+   not the wrapper: the wrapper's height is auto, so a percentage max-height
+   there would resolve to none and the card would overflow the page anyway. */
+.wizard { max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); }
+.wizard > * { flex-shrink: 0; }
+.wizard > .wiz-step { flex-shrink: 1; min-height: 0; overflow: hidden; }
+.wiz-body {
+  display: flex; flex-direction: column; gap: 14px;
+  min-height: 0; overflow-y: auto;
+}
+.wizard-wide .wiz-body { gap: 12px; }
+/* The opening and closing steps are a short message and a button — let them
+   breathe, while the form and picker steps stay compact. */
+.wizard.is-roomy,
+.wizard.is-roomy .wiz-step,
+.wizard.is-roomy .wiz-body { gap: 2rem; }
+.wizard.is-roomy .wiz-nav { margin-top: 0; }
 .wiz-nav { display: flex; gap: 10px; margin-top: 2px; }
 .wiz-nav .btn { flex: 1; }
 .wizard .hint { margin: 0; }
+
+/* ---------- Homepage connection picker ----------
+   Shared by the first-run wizard and the in-app "Homepage connection" dialog. */
+.login-wrap-wide { max-width: 520px; }
+.wizard-wide .wiz-step { gap: 12px; }
+
+.conn { display: flex; flex-direction: column; gap: 12px; }
+.conn-status { font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+.conn-status.busy::before {
+  content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 7px;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; vertical-align: -1px; animation: conn-spin .7s linear infinite;
+}
+@keyframes conn-spin { to { transform: rotate(360deg); } }
+.conn-status.good { color: #86efac; }
+.conn-status.warn { color: #fcd34d; }
+.conn-status.bad { color: #fca5a5; }
+
+.conn-note { margin: 0; font-size: 12px; line-height: 1.55; color: var(--text-dim); }
+.conn-note.ok { color: var(--text); }
+.conn-note.sel { margin: -2px 0 0; }
+.conn-note.sel.bad { color: #fca5a5; }
+.conn-note code, .conn-fix code { font-family: var(--mono); font-size: 11px; }
+.conn-docker { display: flex; flex-direction: column; gap: 10px; }
+.conn-fix {
+  padding: 11px 12px;
+  background: var(--danger-soft);
+  border: 1px solid rgba(239, 68, 68, .35);
+  border-radius: var(--radius-sm);
+}
+.conn-fix p { margin: 0 0 6px; font-size: 12px; line-height: 1.55; }
+.conn-fix pre {
+  margin: 0; padding: 9px 11px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono); font-size: 11px; line-height: 1.5;
+  white-space: pre; overflow-x: auto;
+}
+
+.conn-list { display: flex; flex-direction: column; gap: 8px; }
+.conn-item {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px; cursor: pointer;
+  background: var(--bg-elev); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  transition: border-color .15s ease, background .15s ease;
+}
+.conn-item:hover { border-color: var(--border); }
+.conn-item.is-selected { border-color: var(--accent); background: var(--accent-soft); }
+.conn-item input[type="radio"] { margin: 3px 0 0; accent-color: var(--accent); flex: 0 0 auto; }
+.conn-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.conn-path { font-family: var(--mono); font-size: 12px; color: var(--text); word-break: break-all; }
+.conn-host, .conn-why { font-size: 11px; line-height: 1.5; color: var(--muted); }
+.conn-host code { font-family: var(--mono); word-break: break-all; }
+.conn-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.conn-tags:empty { display: none; }
+.conn-tag {
+  font-style: normal; font-size: 10px; font-weight: 600; letter-spacing: .3px;
+  padding: 2px 6px; border-radius: 999px;
+  background: var(--bg-elev2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.conn-tag.best { background: var(--accent-soft); border-color: rgba(59, 130, 246, .45); color: #bfdbfe; }
+.conn-tag.ok { background: rgba(34, 197, 94, .12); border-color: rgba(34, 197, 94, .35); color: #86efac; }
+.conn-tag.warn { background: rgba(252, 211, 77, .12); border-color: rgba(252, 211, 77, .35); color: #fcd34d; }
+.conn-tag.bad { background: var(--danger-soft); border-color: rgba(239, 68, 68, .35); color: #fca5a5; }
+
+.conn-input {
+  margin-top: 5px; width: 100%; padding: 7px 9px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text); font-family: var(--mono); font-size: 12px;
+}
+.conn-input:focus { outline: none; border-color: var(--accent); }
+.conn-error { margin: 0; font-size: 12px; color: #fca5a5; }
+.conn-foot { display: flex; justify-content: flex-end; }
+.conn-field { margin-top: 14px; }
+.conn-field .hint { margin: 0; }
+.conn-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
+
+/* The header path doubles as the button that opens the dialog. */
+.brand-text button.path {
+  background: none; border: none; padding: 0; cursor: pointer;
+  text-align: left; font-family: var(--mono);
+}
+.brand-text button.path:hover { color: var(--text-dim); text-decoration: underline; }
+
+/* ---------- About ---------- */
+.about-modal { width: 520px; }
+.about-modal .modal-body { display: flex; flex-direction: column; gap: 18px; }
+.about-head { display: flex; align-items: center; gap: 14px; }
+.about-mark { width: 52px; height: 52px; border-radius: 12px; flex: 0 0 52px; }
+.about-name { margin: 0 0 3px; font-size: 16px; font-weight: 700; }
+.about-version { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--muted); }
+.about-tag { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+.about-tag code { font-family: var(--mono); font-size: 12px; }
+.about-tag a { color: var(--accent); text-decoration: none; }
+.about-tag a:hover { text-decoration: underline; }
+
+.about-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.about-links a {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-elev); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  color: var(--text); text-decoration: none;
+  transition: border-color .15s ease, background .15s ease;
+}
+.about-links a:hover { border-color: var(--accent); background: var(--bg-elev2); }
+.al-icon { font-size: 16px; line-height: 1; width: 20px; text-align: center; flex: 0 0 20px; }
+.al-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.al-text strong { font-size: 13px; font-weight: 600; }
+.al-text small { font-size: 11px; color: var(--muted); word-break: break-word; }
+
+.about-notes { border-top: 1px solid var(--border-soft); padding-top: 14px; }
+.about-notes > summary {
+  cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-dim);
+  list-style: none; display: flex; align-items: center; gap: 7px;
+}
+.about-notes > summary::-webkit-details-marker { display: none; }
+.about-notes > summary::before { content: "▸"; font-size: 11px; color: var(--muted); }
+.about-notes[open] > summary::before { content: "▾"; }
+.about-notes > summary:hover { color: var(--text); }
+/* The changelog is long: give it its own scroll rather than stretching the dialog. */
+.about-notes .changelog { max-height: 40vh; overflow-y: auto; margin-top: 12px; padding-right: 4px; }
+.about-notes .changelog h1 { font-size: 15px; }
+
+.about-copy {
+  margin: 0; padding-top: 2px;
+  font-size: 12px; color: var(--muted); text-align: center;
+}
+.about-copy a { color: var(--text-dim); text-decoration: none; }
+.about-copy a:hover { color: var(--accent); text-decoration: underline; }

@@ -2,8 +2,8 @@
 
 import os
 import secrets
-import socket
-import http.client
+import time
+from datetime import datetime, timezone
 
 from flask import (
     Flask,
@@ -20,19 +20,24 @@ from flask import (
 from flask_login import LoginManager, current_user
 from werkzeug.utils import secure_filename
 
+import app_settings
 import auth
+import discovery
 import setup_wizard
 from icon_cache import IconCache, RateLimited
 from models import User, db
-from yaml_store import ServicesStore, COMMON_FIELDS
+from yaml_store import HEADER, ServicesStore, COMMON_FIELDS
 
 CONFIG_DIR = os.environ.get("HOMEPAGE_CONFIG_DIR", "/config")
-SERVICES_PATH = os.environ.get(
+# Where services.yaml lives when nothing has been detected or chosen yet. The
+# setup wizard finds the real file (see discovery.py) and records it, so a new
+# install never has to get this right in compose first — see services_path().
+DEFAULT_SERVICES_PATH = os.environ.get(
     "SERVICES_PATH", os.path.join(CONFIG_DIR, "services.yaml")
 )
-BACKUP_DIR = os.environ.get(
-    "BACKUP_DIR", os.path.join(CONFIG_DIR, ".homepage-gui-backups")
-)
+# An explicit BACKUP_DIR pins backups; otherwise they sit in a dot-folder next
+# to services.yaml, so they follow the file if the configured path changes.
+BACKUP_DIR = os.environ.get("BACKUP_DIR")
 KEEP_BACKUPS = int(os.environ.get("KEEP_BACKUPS", "40"))
 KEEP_BACKUP_DAYS = int(os.environ.get("KEEP_BACKUP_DAYS", "14"))
 
@@ -40,6 +45,12 @@ APP_VERSION = "0.3.0"
 # Public source location (AGPL §13). Override if you run a modified version so
 # your network users can reach *your* corresponding source.
 SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/hyprlab/homepage-gui")
+# Shown in the About dialog. The upstream project this edits, this project's
+# own page, and who to credit.
+UPSTREAM_URL = os.environ.get("UPSTREAM_URL", "https://gethomepage.dev")
+PROJECT_URL = os.environ.get("PROJECT_URL", "https://hyprlab.co/homepage-gui/")
+VENDOR_URL = os.environ.get("VENDOR_URL", "https://hyprlab.co")
+VENDOR_NAME = os.environ.get("VENDOR_NAME", "Hyprlab")
 # Single source of truth for release notes, shown in-app and on GitHub.
 CHANGELOG_PATH = os.environ.get(
     "CHANGELOG_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "CHANGELOG.md")
@@ -60,6 +71,46 @@ os.makedirs(ICONS_DIR, exist_ok=True)
 # dedicated volume if you'd rather keep them out of the Homepage config.
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(CONFIG_DIR, ".homepage-gui"))
 os.makedirs(DATA_DIR, exist_ok=True)
+
+# Choices made in the app (which services.yaml, which Homepage container) live
+# beside the account database rather than in the environment.
+settings = app_settings.Settings(DATA_DIR)
+
+
+def services_path():
+    """The services.yaml this app reads and writes.
+
+    A path chosen in the app beats the environment default: the point of the
+    setup wizard is that a fresh install can locate the real file and start
+    editing, with no edit-compose-and-recreate round trip.
+    """
+    return settings.get("services_path") or DEFAULT_SERVICES_PATH
+
+
+def backup_dir_for(path):
+    return BACKUP_DIR or os.path.join(
+        os.path.dirname(path) or CONFIG_DIR, ".homepage-gui-backups"
+    )
+
+
+_store_cache = {}
+
+
+def get_store():
+    """A ServicesStore bound to whichever path is configured right now."""
+    path = services_path()
+    store = _store_cache.get("store")
+    if store is None or store.path != path:
+        store = ServicesStore(
+            path, backup_dir_for(path), keep=KEEP_BACKUPS, keep_days=KEEP_BACKUP_DAYS
+        )
+        _store_cache["store"] = store
+    return store
+
+
+def homepage_container():
+    return settings.get("homepage_container") or HOMEPAGE_CONTAINER
+
 
 # Iconify previews are proxied through this app and cached on disk. Pointing the
 # browser straight at api.iconify.design meant one request per icon — a single
@@ -109,8 +160,6 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     REMEMBER_COOKIE_HTTPONLY=True,
     REMEMBER_COOKIE_SAMESITE="Lax",
-    # Read by the setup wizard so it can report on the target file.
-    SERVICES_PATH=SERVICES_PATH,
 )
 
 db.init_app(app)
@@ -134,48 +183,18 @@ def unauthorized():
 
 app.register_blueprint(auth.bp)
 app.register_blueprint(setup_wizard.bp)
-
-store = ServicesStore(
-    SERVICES_PATH, BACKUP_DIR, keep=KEEP_BACKUPS, keep_days=KEEP_BACKUP_DAYS
-)
+# The wizard runs detection before any account exists, so it reaches the
+# implementation through the app rather than importing it (app imports it).
+app.config["DETECT_CONNECTION"] = lambda refresh=False: run_detect(refresh)
 
 icons_cache = IconCache(ICON_CACHE_DIR, max_icons=ICON_CACHE_MAX)
 
-
-class _UnixHTTPConnection(http.client.HTTPConnection):
-    """Talk HTTP over the Docker unix socket using only the stdlib."""
-
-    def __init__(self, sock_path):
-        super().__init__("localhost")
-        self._sock_path = sock_path
-
-    def connect(self):
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(30)
-        s.connect(self._sock_path)
-        self.sock = s
+docker = discovery.Docker(DOCKER_SOCK)
 
 
 def restart_homepage():
     """Restart the Homepage container via the Docker Engine API."""
-    if not os.path.exists(DOCKER_SOCK):
-        raise RuntimeError(
-            "Docker socket not available — mount %s into this container to enable "
-            "one-click restarts." % DOCKER_SOCK
-        )
-    conn = _UnixHTTPConnection(DOCKER_SOCK)
-    try:
-        conn.request("POST", "/containers/%s/restart?t=5" % HOMEPAGE_CONTAINER)
-        resp = conn.getresponse()
-        body = resp.read()
-        if resp.status == 404:
-            raise RuntimeError("Container '%s' not found." % HOMEPAGE_CONTAINER)
-        if resp.status not in (204,):
-            raise RuntimeError(
-                "Docker API returned %s: %s" % (resp.status, body.decode("utf-8", "replace"))
-            )
-    finally:
-        conn.close()
+    docker.restart(homepage_container())
 
 
 @app.context_processor
@@ -197,13 +216,16 @@ def inject_static_version():
 # Setup steering, auth guard and CSRF
 # ---------------------------------------------------------------------------
 # Reachable without a session; everything else needs one.
-PUBLIC_ENDPOINTS = {"auth.login", "auth.logout", "setup.wizard", "setup.submit", "static", "health"}
+PUBLIC_ENDPOINTS = {
+    "auth.login", "auth.logout", "setup.wizard", "setup.submit", "setup.detect",
+    "static", "health",
+}
 
 
 @app.before_request
 def steer_to_setup():
     """A fresh install (zero users) goes to the wizard, nowhere else."""
-    if request.endpoint in ("setup.wizard", "setup.submit", "static"):
+    if request.endpoint in ("setup.wizard", "setup.submit", "setup.detect", "static"):
         return None
     if setup_wizard.needs_setup():
         if request.path.startswith("/api/"):
@@ -253,6 +275,13 @@ def inject_globals():
         "turnstile_site_key": app.config["TURNSTILE_SITE_KEY"],
         "app_version": APP_VERSION,
         "source_url": SOURCE_URL,
+        "upstream_url": UPSTREAM_URL,
+        "project_url": PROJECT_URL,
+        "vendor_url": VENDOR_URL,
+        "vendor_name": VENDOR_NAME,
+        # Evaluated per render, so a container that runs into January doesn't
+        # keep claiming last year.
+        "current_year": datetime.now(timezone.utc).year,
     }
 
 
@@ -261,7 +290,7 @@ def index():
     return render_template(
         "index.html",
         common_fields=COMMON_FIELDS,
-        services_path=SERVICES_PATH,
+        services_path=services_path(),
     )
 
 
@@ -281,24 +310,23 @@ def health():
     # working, but it gives nothing away about the host's filesystem.
     if not current_user.is_authenticated:
         return jsonify({"ok": True, "auth_required": True})
-    return jsonify(
-        {
-            "ok": True,
-            "services_path": SERVICES_PATH,
-            "exists": os.path.exists(SERVICES_PATH),
-            "writable": os.access(SERVICES_PATH, os.W_OK)
-            if os.path.exists(SERVICES_PATH)
-            else os.access(os.path.dirname(SERVICES_PATH), os.W_OK),
-        }
-    )
+    return jsonify(dict(connection_state(), ok=True))
 
 
 @app.route("/api/config", methods=["GET"])
 def get_config():
     try:
-        return jsonify(store.load())
+        return jsonify(get_store().load())
     except FileNotFoundError:
-        return jsonify({"error": "services.yaml not found at %s" % SERVICES_PATH}), 404
+        # The UI turns this into "let's find your services.yaml" rather than a
+        # dead end, so say plainly that the path is the problem.
+        return jsonify(
+            {
+                "error": "No services.yaml at %s" % services_path(),
+                "missing_file": True,
+                "services_path": services_path(),
+            }
+        ), 404
     except Exception as exc:  # noqa: BLE001 - surface parse errors to the UI
         return jsonify({"error": str(exc)}), 500
 
@@ -309,7 +337,7 @@ def save_config():
     if not payload or "groups" not in payload:
         return jsonify({"error": "Expected JSON with a 'groups' array"}), 400
     try:
-        backup = store.save(payload)
+        backup = get_store().save(payload)
         return jsonify({"ok": True, "backup": backup})
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -331,6 +359,7 @@ def preview():
 
 @app.route("/api/backups", methods=["GET"])
 def list_backups():
+    store = get_store()
     store.prune()  # purge expired backups when the list is opened
     return jsonify({"backups": store.list_backups(), "keep_days": KEEP_BACKUP_DAYS})
 
@@ -338,7 +367,7 @@ def list_backups():
 @app.route("/api/backups/<name>", methods=["GET"])
 def get_backup(name):
     try:
-        return jsonify({"name": name, "yaml": store.backup_text(name)})
+        return jsonify({"name": name, "yaml": get_store().backup_text(name)})
     except FileNotFoundError:
         return jsonify({"error": "Backup not found"}), 404
 
@@ -350,12 +379,163 @@ def restore_backup():
     if not name:
         return jsonify({"error": "Expected 'name'"}), 400
     try:
-        store.restore(name)
+        get_store().restore(name)
         return jsonify({"ok": True})
     except FileNotFoundError:
         return jsonify({"error": "Backup not found"}), 404
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+
+
+# ---------------------------------------------------------------------------
+# Homepage connection — where services.yaml is, and which container to restart
+# ---------------------------------------------------------------------------
+# Detection walks every mounted filesystem, so a result is worth reusing for a
+# little while (the wizard asks for it, then the user re-reads it as they pick).
+_detect_cache = {"at": 0.0, "data": None}
+DETECT_TTL = 45.0
+# Same idea for the Docker lookup behind "what host path is this, really?".
+_mounts_cache = {"at": None, "mounts": []}
+MOUNTS_TTL = 60.0
+
+
+def self_mounts():
+    """Host dir -> container dir for this container, as Docker sees it."""
+    now = time.monotonic()
+    if _mounts_cache["at"] is None or now - _mounts_cache["at"] > MOUNTS_TTL:
+        _mounts_cache["mounts"] = discovery.docker_survey(docker)["self_mounts"]
+        _mounts_cache["at"] = now
+    return _mounts_cache["mounts"]
+
+
+def connection_state():
+    """Everything the UI needs to describe the current wiring."""
+    path = services_path()
+    exists = os.path.isfile(path)
+    parent = os.path.dirname(path) or "/"
+    return {
+        "services_path": path,
+        "host_path": discovery.local_to_host(path, self_mounts()),
+        "exists": exists,
+        "writable": os.access(path, os.W_OK) if exists else os.access(parent, os.W_OK),
+        "dir_mounted": os.path.isdir(parent),
+        "backup_dir": backup_dir_for(path),
+        "homepage_container": homepage_container(),
+        "docker_available": docker.available,
+        # True once someone has picked a path in the app, as opposed to falling
+        # back to HOMEPAGE_CONFIG_DIR/SERVICES_PATH from the environment.
+        "chosen_in_app": bool(settings.get("services_path")),
+        "default_path": DEFAULT_SERVICES_PATH,
+    }
+
+
+class PathProblem(ValueError):
+    """A rejected path, with a message meant to be read by whoever typed it.
+
+    `can_create` marks the one case the UI can resolve by itself: the folder is
+    there, the file simply isn't, so it can offer to make an empty one.
+    """
+
+    def __init__(self, message, can_create=False):
+        super().__init__(message)
+        self.can_create = can_create
+
+
+def _resolve_target(raw, create):
+    """Validate a user-supplied path, optionally creating an empty file."""
+    if not raw.startswith("/"):
+        raise PathProblem(
+            "Use an absolute path as this container sees it, e.g. /config/services.yaml."
+        )
+    path = os.path.normpath(raw)
+    if os.path.isdir(path):
+        path = os.path.join(path, "services.yaml")
+    if os.path.splitext(path)[1].lower() not in (".yaml", ".yml"):
+        raise PathProblem("Pick a .yaml file — Homepage's is called services.yaml.")
+
+    if os.path.exists(path):
+        if not os.path.isfile(path):
+            raise PathProblem("%s isn't a file." % path)
+        if not os.access(path, os.R_OK):
+            raise PathProblem("Can't read %s — check the file's permissions." % path)
+        return path
+
+    parent = os.path.dirname(path) or "/"
+    if not os.path.isdir(parent):
+        raise PathProblem(
+            "This container can't see %s. Mount your Homepage config directory "
+            "into it and try again." % parent
+        )
+    if not create:
+        raise PathProblem("There's no file at %s yet." % path, can_create=True)
+    if not os.access(parent, os.W_OK):
+        raise PathProblem(
+            "%s is read-only for this container, so nothing can be created there." % parent
+        )
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(HEADER)
+    return path
+
+
+@app.route("/api/connection", methods=["GET"])
+def get_connection():
+    return jsonify(connection_state())
+
+
+def run_detect(refresh=False):
+    """Detection plus the current wiring, memoised for DETECT_TTL seconds.
+
+    The setup wizard calls this through its own route (before an account
+    exists) and the app calls it through /api/connection/detect afterwards;
+    sharing the cache means the wizard can start the scan while the user is
+    still typing a password, and the result is waiting when they get there.
+    """
+    now = time.monotonic()
+    if refresh or not _detect_cache["data"] or now - _detect_cache["at"] > DETECT_TTL:
+        _detect_cache["data"] = discovery.detect(
+            current_path=services_path(),
+            default_path=DEFAULT_SERVICES_PATH,
+            exclude_dirs=[DATA_DIR, ICONS_DIR, ICON_CACHE_DIR],
+            docker=docker,
+        )
+        _detect_cache["at"] = now
+    return dict(_detect_cache["data"], current=connection_state())
+
+
+@app.route("/api/connection/detect", methods=["GET"])
+def detect_connection():
+    """Hunt for services.yaml across every mount and ask Docker about Homepage."""
+    return jsonify(run_detect(request.args.get("refresh") == "1"))
+
+
+@app.route("/api/connection", methods=["POST"])
+def set_connection():
+    """Point the editor at a services.yaml (and optionally name the container)."""
+    payload = request.get_json(silent=True) or {}
+    raw = (payload.get("path") or "").strip()
+    container = payload.get("homepage_container")
+    updates = {}
+
+    if raw:
+        try:
+            updates["services_path"] = _resolve_target(raw, bool(payload.get("create")))
+        except PathProblem as exc:
+            return jsonify({"error": str(exc), "can_create": exc.can_create}), 400
+        except OSError as exc:
+            return jsonify({"error": "Couldn't create that file: %s" % exc}), 400
+
+    if container is not None:
+        # Empty clears the override and falls back to HOMEPAGE_CONTAINER.
+        updates["homepage_container"] = str(container).strip()[:128] or None
+
+    if updates:
+        try:
+            settings.set(**updates)
+        except OSError as exc:
+            return jsonify({"error": "Couldn't save the setting: %s" % exc}), 500
+        _detect_cache["data"] = None
+
+    return jsonify(dict(connection_state(), ok=True))
 
 
 # ---------------------------------------------------------------------------
@@ -442,7 +622,7 @@ def _unique_icon_name(name):
 
 @app.route("/api/icons", methods=["GET"])
 def list_icons():
-    return jsonify({"icons": _list_icons(), "homepage_container": HOMEPAGE_CONTAINER})
+    return jsonify({"icons": _list_icons(), "homepage_container": homepage_container()})
 
 
 @app.route("/api/icons", methods=["POST"])
@@ -497,7 +677,7 @@ def homepage_restart():
 @app.route("/api/download", methods=["GET"])
 def download():
     return send_file(
-        SERVICES_PATH,
+        services_path(),
         mimetype="text/yaml",
         as_attachment=True,
         download_name="services.yaml",

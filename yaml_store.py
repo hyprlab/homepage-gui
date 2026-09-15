@@ -148,7 +148,13 @@ class ServicesStore:
         self.backup_dir = backup_dir
         self.keep = keep  # hard cap on number of backups (0 = unlimited)
         self.keep_days = keep_days  # auto-purge backups older than this (0 = forever)
-        os.makedirs(self.backup_dir, exist_ok=True)
+        # Best-effort: a read-only or not-yet-mounted config dir shouldn't stop
+        # the app from starting, or from showing the file it can still read.
+        # _backup() retries this and surfaces the real error on save.
+        try:
+            os.makedirs(self.backup_dir, exist_ok=True)
+        except OSError:
+            pass
 
     def load(self):
         # Purge expired backups whenever the config is read (i.e. on page load),
@@ -178,6 +184,7 @@ class ServicesStore:
     def _backup(self):
         if not os.path.exists(self.path):
             return None
+        os.makedirs(self.backup_dir, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         name = "services-%s.yaml" % stamp
         dest = os.path.join(self.backup_dir, name)
@@ -213,7 +220,11 @@ class ServicesStore:
 
     def list_backups(self):
         items = []
-        for name in os.listdir(self.backup_dir):
+        try:
+            names = os.listdir(self.backup_dir)
+        except OSError:
+            return items
+        for name in names:
             if not name.endswith(".yaml"):
                 continue
             full = os.path.join(self.backup_dir, name)

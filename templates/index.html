@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="{{ static_url('css/style.css') }}" />
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" defer></script>
+  <script src="{{ static_url('js/connection.js') }}" defer></script>
   <script src="{{ static_url('js/app.js') }}" defer></script>
 </head>
 <body>
@@ -20,7 +21,8 @@
       <img class="brand-mark" src="{{ static_url('img/logo.png') }}" alt="Homepage GUI logo" />
       <div class="brand-text">
         <h1>Homepage GUI</h1>
-        <span class="path" id="cfgPath" title="{{ services_path }}">{{ services_path }}</span>
+        <button type="button" class="path" id="cfgPath"
+                title="{{ services_path }} — click to change which file this edits">{{ services_path }}</button>
       </div>
     </div>
     <div class="topbar-actions">
@@ -69,7 +71,7 @@
         <button class="btn ghost sidebar-btn" id="restartHomepageBtn" title="Restart Homepage so it serves newly-uploaded icons">↻ Restart Homepage</button>
         <span id="statTotals" class="muted"></span>
         <div class="app-credit">
-          Homepage GUI <button class="linklike" id="changelogBtn" title="Release notes">v{{ app_version }}</button> · AGPLv3 ·
+          Homepage GUI <button class="linklike" id="aboutBtn" title="About Homepage GUI">v{{ app_version }}</button> · AGPLv3 ·
           <a href="{{ source_url }}" target="_blank" rel="noopener">Source</a>
         </div>
       </div>
@@ -183,6 +185,60 @@
       </div>
       <div class="icon-results" id="iconResults"></div>
       <div class="icon-status" id="iconStatus"></div>
+    </div>
+  </div>
+
+  <!-- About -->
+  <div class="modal-overlay hidden" id="aboutOverlay">
+    <div class="modal about-modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+      <div class="modal-head">
+        <h2 id="aboutTitle">About</h2>
+        <button class="icon-btn" id="aboutClose" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="about-head">
+          <img class="about-mark" src="{{ static_url('img/logo.png') }}" alt="" />
+          <div>
+            <h3 class="about-name">Homepage GUI <span class="about-version">v{{ app_version }}</span></h3>
+            <p class="about-tag">A drag-and-drop editor for
+              <a href="{{ upstream_url }}" target="_blank" rel="noopener">Homepage</a>'s
+              <code>services.yaml</code>.</p>
+          </div>
+        </div>
+
+        <ul class="about-links">
+          <li>
+            <a href="{{ project_url }}" target="_blank" rel="noopener">
+              <span class="al-icon">🌐</span>
+              <span class="al-text"><strong>Project website</strong><small>{{ project_url|replace('https://','')|replace('http://','') }}</small></span>
+            </a>
+          </li>
+          <li>
+            <a href="{{ source_url }}" target="_blank" rel="noopener">
+              <span class="al-icon">💻</span>
+              <span class="al-text"><strong>Source code</strong><small>{{ source_url|replace('https://','')|replace('http://','') }}</small></span>
+            </a>
+          </li>
+          <li>
+            <a href="{{ upstream_url }}" target="_blank" rel="noopener">
+              <span class="al-icon">🏠</span>
+              <span class="al-text"><strong>Homepage</strong><small>{{ upstream_url|replace('https://','')|replace('http://','') }} — the dashboard this edits</small></span>
+            </a>
+          </li>
+        </ul>
+
+        <details class="about-notes" id="aboutNotes">
+          <summary>Release notes</summary>
+          <div class="changelog" id="aboutNotesBody">
+            <p class="muted">Loading…</p>
+          </div>
+        </details>
+
+        <p class="about-copy">
+          © {{ current_year }} <a href="{{ vendor_url }}" target="_blank" rel="noopener">{{ vendor_name }}</a> ·
+          Released under the <a href="{{ source_url }}/blob/main/LICENSE" target="_blank" rel="noopener">AGPL v3</a>
+        </p>
+      </div>
     </div>
   </div>
 

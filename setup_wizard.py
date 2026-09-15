@@ -2,7 +2,14 @@
 
 Shown exactly once: while the instance has zero users, every request is
 steered to /setup. The wizard creates the admin account in one POST and signs
-it in, after which the app behaves normally.
+it in, then hands over to the connection step, which finds the user's
+services.yaml for them (see discovery.py) and records the one they pick.
+
+Detection is exposed here as well as on /api/connection/detect, because the
+wizard starts the scan while the user is still filling in the account form —
+before there is any account to authenticate with. The route refuses to answer
+once the instance has a user, so it is only ever reachable in the same window
+as the wizard itself.
 
 (Named setup_wizard.py rather than setup.py so it can't be mistaken for a
 packaging script at the repo root.)
@@ -43,7 +50,18 @@ def needs_setup() -> bool:
 def wizard():
     if not needs_setup():
         return redirect(url_for("auth.login"))
-    return render_template("setup.html", services_path=current_app.config["SERVICES_PATH"])
+    return render_template("setup.html")
+
+
+@bp.route("/setup/detect")
+def detect():
+    """Pre-warm the services.yaml hunt while the account form is being filled in."""
+    if not needs_setup():
+        return jsonify(error="This instance is already set up."), 409
+    run = current_app.config.get("DETECT_CONNECTION")
+    if not run:
+        return jsonify(error="Detection is unavailable."), 503
+    return jsonify(run(request.args.get("refresh") == "1"))
 
 
 @bp.route("/setup", methods=["POST"])
