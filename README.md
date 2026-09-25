@@ -1,469 +1,128 @@
 # Homepage GUI
 
-> A self-hosted, drag-and-drop web editor for [gethomepage](https://gethomepage.dev)'s
-> `services.yaml` — organize sections and services, edit every field, pick or upload icons,
-> and apply changes to your live dashboard. Runs in one container, behind a sign-in you
-> set up on first boot.
+A self-hosted, drag-and-drop editor for [Homepage](https://gethomepage.dev)'s
+`services.yaml`. Organize sections and services, edit every field, pick or
+upload icons, and save straight to your live dashboard. It runs in one
+container, behind a sign-in you set up on first start.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Docker Image](https://img.shields.io/docker/v/hyprlab/homepage-gui?label=docker%20hub&sort=semver)](https://hub.docker.com/r/hyprlab/homepage-gui)
 [![Docker Pulls](https://img.shields.io/docker/pulls/hyprlab/homepage-gui)](https://hub.docker.com/r/hyprlab/homepage-gui)
 
-![Homepage GUI screenshot](https://raw.githubusercontent.com/hyprlab/homepage-gui/main/docs/screenshot.png)
-
----
-
-## Table of contents
-
-- [What it does](#what-it-does)
-- [Features](#features)
-- [Requirements](#requirements)
-- [Install with Docker Compose](#install-with-docker-compose)
-  - [1. Get the files](#1-get-the-files)
-  - [2. Configure `.env`](#2-configure-env)
-  - [3. Enable custom icon uploads (optional)](#3-enable-custom-icon-uploads-optional)
-  - [4. Start it](#4-start-it)
-- [Finding your `services.yaml`](#finding-your-servicesyaml)
-- [Configuration reference](#configuration-reference)
-- [The login](#the-login)
-- [Using the app](#using-the-app)
-- [Custom icon uploads & the Homepage restart](#custom-icon-uploads--the-homepage-restart)
-- [Backups](#backups)
-- [Updating](#updating)
-- [How icons render](#how-icons-render)
-- [Release notes](#release-notes)
-- [Building from source / development](#building-from-source--development)
-- [Limitations](#limitations)
-- [License](#license)
-
----
+![Homepage GUI screenshot](https://raw.githubusercontent.com/hyprlab/homepage-gui/main/assets/screenshot.png)
 
 ## What it does
 
-Homepage's `services.yaml` is hand-edited YAML: a list of sections, each containing a list
-of services with fields like `icon`, `href`, `description`, `ping`, and widgets. Homepage GUI
-gives that file a fast, modern editor:
-
-- Mount your existing Homepage `config` directory into the container — the setup
-  wizard finds `services.yaml` for you, wherever it lives.
-- Edit `services.yaml` visually in your browser, on any LAN device.
-- Saves write **straight back** to the same file Homepage reads, with a timestamped backup
-  every time. Homepage hot-reloads, so changes appear immediately (only new **icon uploads**
-  need a Homepage restart, which the app can do for you).
+Homepage's `services.yaml` is hand-edited YAML: a list of sections, each with
+services that carry an `icon`, `href`, `description`, `ping` and widgets.
+Homepage GUI edits that file in the browser, on any device on your LAN, and
+writes back to the same file Homepage reads, with a backup before every save.
+Homepage reloads it by itself, so changes appear at once.
 
 ## Features
 
-- **Drag & drop** — reorder sections, reorder services within a section, and drag services
-  between sections.
-- **Sidebar** — section navigator with a live filter, plus draggable "Service" / "Section"
-  blocks you can drop onto the canvas or click to append.
-- **Full service editing** — name, icon, URL (`href`), description and `ping` as first-class
-  fields, plus an **Advanced (YAML)** panel that round-trips widgets, `server`/`container`
-  and any other keys without losing them.
-- **Icon chooser** with combined search across all sources (origin-badged), or per-source tabs:
-  - **Dashboard Icons** (`name.svg`) · **Material Design Icons** (`mdi-`) · **Font Awesome**
-    (`fas-`/`far-`/`fab-`) · **SVG / freesvgicons** (200k+ Iconify icons, stored as a URL).
-  - **My Uploads** — upload your own **PNG/SVG** files.
-- **Icon color overrides** — for sources Homepage can recolor (`mdi-`/`si-`/`sh-` via `-#hex`,
-  and Iconify SVG URLs via `?color=`), with a color picker.
-- **Alphabetical sort** per section (A→Z / Z→A).
-- **Safe saves** — generated YAML is validated before writing, writes are atomic, and a
-  timestamped backup is taken first. Common fields are emitted in Homepage's conventional
-  order (`icon`, `href`, `description`, `ping`); empty fields stay blank, not `null`.
-- **Backups & restore** in the UI, with **14-day auto-purge** (configurable) and a count cap.
-- **YAML preview** before saving.
-- **One-click Homepage restart** so newly-uploaded icons get served.
-- **Sign-in, set up on first boot** — a short wizard creates your admin account; after that
-  the whole app (UI and API) is behind a login, with optional
-  [Cloudflare Turnstile](#the-login). See [The login](#the-login).
-- **Finds your config by itself** — the same wizard scans every folder mounted into the
-  container for a `services.yaml`, and asks Docker which container is Homepage and which
-  host directory it uses, so you pick your file from a list instead of typing a path. If
-  that directory isn't mounted yet, it tells you the exact host path and compose line to
-  add. See [Finding your `services.yaml`](#finding-your-servicesyaml).
-- **About dialog** (click the version in the sidebar footer) — links to the project site,
-  the source, and Homepage itself, plus the full release notes.
-- Self-hosted **Inter** font and cache-busted assets; in-app **Source** link (AGPL §13).
+- **Drag and drop:** reorder sections and services, and move services between
+  sections.
+- **Full service editing:** name, icon, URL, description and `ping` as fields,
+  plus an **Advanced (YAML)** panel that keeps widgets, `server`, `container`
+  and any other keys intact.
+- **Icon chooser** searching Dashboard Icons, Material Design Icons, Font
+  Awesome and 200,000 Iconify SVGs at once, plus your own PNG and SVG uploads.
+- **Icon colors** for the sources Homepage can recolor, with a color picker.
+- **Safe saves:** the YAML is validated before writing, writes are atomic, and
+  a timestamped backup is taken first. Restore any backup from the app.
+- **Finds your config by itself:** the setup wizard scans every mounted folder
+  for `services.yaml` and asks Docker where Homepage keeps its config, so you
+  pick the file from a list instead of typing a path.
+- **One-click Homepage restart** so new icon uploads are served.
+- **Sign-in** with one admin account and optional Cloudflare Turnstile.
 
 ## Requirements
 
-- A host running **Docker** and **Docker Compose v2** (`docker compose …`).
-- An existing **Homepage** install whose `config` directory (containing `services.yaml`) is
-  on the same host. You don't need to know where it is — the setup wizard works that out.
-- A browser with internet access for icon **search/preview** (Iconify & jsDelivr CDNs — the
-  same ones Homepage uses). Editing and saving work fully offline.
+- Docker with Docker Compose v2.
+- A Homepage install on the same host. You don't need to know where its config
+  directory is; the setup wizard works that out.
+- Internet access in the browser for icon search and previews. Editing and
+  saving work offline.
 
 ## Install with Docker Compose
-
-Docker Compose is the supported way to run Homepage GUI.
-
-### 1. Get the files
 
 ```bash
 git clone https://github.com/hyprlab/homepage-gui.git
 cd homepage-gui
-```
-
-The repo ships a ready-to-use `compose.yaml` that pulls `hyprlab/homepage-gui:latest`:
-
-```yaml
-services:
-  homepage-gui:
-    image: ${IMAGE:-hyprlab/homepage-gui:latest}
-    build: .
-    container_name: homepage-gui
-    restart: unless-stopped
-    user: "0:0"                       # needed to write a root-owned services.yaml
-    environment:
-      - HOMEPAGE_CONFIG_DIR=/config
-      - KEEP_BACKUPS=40
-      - KEEP_BACKUP_DAYS=14
-      - ICONS_DIR=/icons
-      - HOMEPAGE_CONTAINER=${HOMEPAGE_CONTAINER:-homepage}
-    ports:
-      - "${HOST_PORT:-5005}:5000"
-    volumes:
-      - ${HOST_CONFIG_DIR:-./config}:/config
-      - ${HOST_ICONS_DIR:-./icons}:/icons
-      - /var/run/docker.sock:/var/run/docker.sock
-```
-
-### 2. Configure `.env`
-
-Copy the example and point it at your host paths:
-
-```bash
 cp .env.example .env
 ```
 
+The repository's `compose.yaml` pulls `hyprlab/homepage-gui:latest`. Point
+`.env` at your host paths:
+
 ```ini
-# .env
 HOST_CONFIG_DIR=/path/to/homepage/config   # folder containing services.yaml
-HOST_ICONS_DIR=/path/to/homepage/icons     # shared custom-icons folder (see step 3)
+HOST_ICONS_DIR=/path/to/homepage/icons     # shared custom-icons folder
 HOST_PORT=5005                             # browse to http://<host>:5005
-HOMEPAGE_CONTAINER=homepage                # your Homepage container's name
 ```
 
-Only `HOST_CONFIG_DIR` really has to be right, and even that is forgiving — the setup
-wizard searches everything you mount, so a *parent* of your config directory works just as
-well as the directory itself. `HOMEPAGE_CONTAINER` is detected from the Docker socket
-during setup, so leave it alone unless you run without the socket.
+Only `HOST_CONFIG_DIR` has to be right, and a parent of your config directory
+works as well as the directory itself. If you don't know the path, start it
+anyway: the wizard asks Docker and prints the exact path and compose line to
+add. `HOMEPAGE_CONTAINER` is detected during setup.
 
-> **Don't know your config path?** Start it anyway and let the app tell you. With the
-> Docker socket mounted, the wizard asks Docker where your Homepage container keeps its
-> config and prints the exact host path, along with the compose line to add:
->
-> ```
-> Homepage's config lives at /srv/homepage/config on the host, but that folder
-> isn't mounted into this container yet.
->
->   volumes:
->     - /srv/homepage/config:/config
-> ```
->
-> Put that path in `HOST_CONFIG_DIR`, run `docker compose up -d` again, and press
-> **Scan again** in the wizard.
-
-> **Tip:** verify the resolved config before starting with `docker compose config`.
-
-### 3. Enable custom icon uploads (optional)
-
-Homepage serves local icons from `/app/public/icons` (referenced as `/icons/<file>`).
-For uploads to appear in Homepage, the **same host folder** must be mounted into **both**
-containers. Add this volume to your **Homepage** `compose.yaml`:
-
-```yaml
-services:
-  homepage:
-    volumes:
-      - /path/to/homepage/config:/app/config
-      - /path/to/homepage/icons:/app/public/icons   # <-- add this (matches HOST_ICONS_DIR)
-      - /var/run/docker.sock:/var/run/docker.sock
-```
-
-Then recreate Homepage once: `docker compose up -d` in your Homepage directory.
-
-The Docker socket mount on the GUI does two jobs: it lets the **Restart Homepage** button
-apply new icons, and it lets the setup wizard identify your Homepage container and the host
-directory it keeps its config in. If you'd rather not expose the socket, omit that volume —
-everything still works, but you'll restart Homepage yourself, and the wizard can only search
-the folders you've mounted rather than telling you which one to mount.
-
-### 4. Start it
+To use custom icon uploads, mount the same icons folder into Homepage too
+([Custom icon uploads](docs/DOCUMENTATION.md#custom-icon-uploads)).
 
 ```bash
 docker compose up -d
 ```
 
-Open **`http://<host>:5005`** (the port from `HOST_PORT`) on any device on your LAN. The
-first visit runs a short **setup wizard**:
+Open `http://<host>:5005`. The first visit runs a setup wizard:
 
-1. **Welcome** — a reminder that this edits an existing Homepage install.
-2. **Create the admin account** — name (optional), username, password (8+ characters).
-   This is the only account; see [The login](#the-login).
-3. **Connect to Homepage** — the part that used to be guesswork. While you were filling in
-   the form, the app searched every folder you mounted and asked Docker about your
-   Homepage container. It lists what it found — each candidate with the reason it turned
-   up, its path on the host, and whether this container can write to it — with the most
-   likely one already selected. Confirm it, pick another, or type a path yourself.
-4. **You're all set** — confirms the file it will write to and that it's writable, so a
-   bad mount shows up here rather than on your first save.
-
-That's it. You're signed in and looking at your dashboard, and nothing about the path had
-to be right in `.env` beforehand. See [Finding your `services.yaml`](#finding-your-servicesyaml)
-for how the search works and how to change the file later.
-
-## Finding your `services.yaml`
-
-The wizard's **Connect to Homepage** step answers "which file am I editing?" for you, so a
-new install doesn't hinge on getting a path right in `.env` first. It looks in two places:
-
-1. **Every folder mounted into the container.** Each one is walked for a `services.yaml`,
-   and a match is ranked higher when Homepage's other config files (`settings.yaml`,
-   `widgets.yaml`, `bookmarks.yaml`, …) sit beside it. Mount your config directory
-   anywhere you like — the scan finds it.
-2. **Docker, if its socket is mounted.** The Engine API says which container is Homepage
-   and which *host* directory it has bound to `/app/config`. Cross-referenced with the
-   host directories bound into this container, that pins down the file exactly — and
-   names your Homepage container for the **Restart Homepage** button at the same time.
-
-Each candidate is listed with why it turned up, its path on the host, and whether this
-container can write to it. Pick one, or type a path yourself. If Homepage's config
-directory isn't shared with this container yet, the wizard says so and prints the compose
-line to add.
-
-Your choice is saved in `DATA_DIR/settings.json` and takes precedence over
-`SERVICES_PATH` / `HOMEPAGE_CONFIG_DIR`, so it survives container recreates without an
-`.env` edit. To change it later — or if the file moves — click the path under the
-**Homepage GUI** title in the header to reopen the same picker. Backups follow the file:
-unless you set `BACKUP_DIR` explicitly, they're written to `.homepage-gui-backups` next to
-whichever `services.yaml` is in use.
-
-> The scan only sees what's mounted into the container; it can't read the rest of your
-> host. That's the point of the Docker lookup — it can name a path the container can't
-> open, so you know what to mount.
-
-## Configuration reference
-
-These are set in `compose.yaml`'s `environment:` (container-side) and `.env` (host-side).
-
-**Container environment variables**
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `HOMEPAGE_CONFIG_DIR` | `/config` | Directory (inside the container) holding `services.yaml` |
-| `SERVICES_PATH` | `$HOMEPAGE_CONFIG_DIR/services.yaml` | Starting point for the file path — a file chosen in the app wins over it |
-| `BACKUP_DIR` | *(beside `services.yaml`)* | Where backups are written; set it to pin them to one folder |
-| `KEEP_BACKUPS` | `40` | Hard cap on number of backups (`0` = unlimited) |
-| `KEEP_BACKUP_DAYS` | `14` | Auto-purge backups older than N days (`0` = keep forever) |
-| `ICONS_DIR` | `/icons` | Where uploaded icons are stored (shared with Homepage) |
-| `HOMEPAGE_CONTAINER` | `homepage` | Container the GUI restarts to load new icons (also detectable in-app) |
-| `DOCKER_SOCK` | `/var/run/docker.sock` | Docker socket used for the restart |
-| `SOURCE_URL` | this repo | Source link shown in-app (set to your fork if modified) |
-| `PORT` | `5000` | In-container listen port (host port is mapped in compose) |
-| `DATA_DIR` | `$HOMEPAGE_CONFIG_DIR/.homepage-gui` | Holds the account database, session key and `settings.json` |
-| `SECRET_KEY` | auto | Session signing key; generated and persisted in `DATA_DIR` if unset |
-| `TURNSTILE_SITE_KEY` | *(empty)* | Cloudflare Turnstile site key — empty disables the challenge |
-| `TURNSTILE_SECRET_KEY` | *(empty)* | Turnstile secret key (both must be set to enable it) |
-| `DATABASE_URL` | `sqlite:///$DATA_DIR/homepage-gui.db` | Override the account database location |
-| `ICON_CACHE_DIR` | `$DATA_DIR/icon-cache` | Disk cache for Iconify icon bodies, search results and the dashboard-icons index |
-| `ICON_CACHE_MAX` | `20000` | Cached icon bodies to keep before pruning the oldest (~400 bytes each) |
-
-**`.env` (host-side, used by compose)**
-
-| Variable | Example | Purpose |
-|---|---|---|
-| `HOST_CONFIG_DIR` | `/srv/homepage/config` | Host path mounted to `/config` (the wizard can tell you this one) |
-| `HOST_ICONS_DIR` | `/srv/homepage/icons` | Host path mounted to `/icons` |
-| `HOST_PORT` | `5005` | Host port mapped to the container's `5000` |
-| `HOMEPAGE_CONTAINER` | `homepage` | Passed through for the restart feature |
-| `IMAGE` | `hyprlab/homepage-gui:1.0.0` | Pin a specific image tag (optional) |
-| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | `0x4AAA…` | Cloudflare Turnstile on the login (optional) |
-| `SECRET_KEY` | `a1b2c3…` | Pin the session signing key (optional) |
-
-The container runs as `root` (`user: "0:0"`) so it can write a typically root-owned
-`services.yaml`. Change `user:` if your config files are owned by a different UID/GID.
-
-## The login
-
-Homepage GUI edits the file your dashboard runs on, so it ships with a sign-in. The first
-time you open it, a short wizard creates your admin account and connects it to your config:
-
-1. **Welcome** — a reminder that this edits an existing Homepage install.
-2. **Create the admin account** — name (optional), username, password (8+ characters).
-3. **Connect to Homepage** — pick the `services.yaml` to edit from what it found.
-4. **You're all set** — confirms which file it will write to, and whether that file is
-   actually writable, so a bad mount shows up here rather than on your first save.
-
-You're signed in when the wizard finishes. There's one account and no registration page —
-this is a single-operator tool. Keep the password in your password manager; there's no
-reset link, and see [Forgot the password](#forgot-the-password) if you lose it.
-
-Everything else is guarded: every page and every `/api/*` route needs a session. Sign out
-from the button in the top bar.
-
-**Where the account lives**
-
-The account database and the session signing key sit in `DATA_DIR`, which defaults to
-`.homepage-gui/` inside the config directory you already mount — so they survive
-`docker compose up -d` and container recreates with no extra volume. Point `DATA_DIR`
-somewhere else (a named volume, say) if you'd rather keep them out of your Homepage config:
-
-```yaml
-    environment:
-      - DATA_DIR=/data
-    volumes:
-      - homepage-gui-data:/data
-```
-
-### Cloudflare Turnstile (optional)
-
-If the GUI is reachable from the internet, you can put a Turnstile challenge on the login.
-Create a widget at **Cloudflare dashboard → Turnstile**, then put the pair in `.env`:
-
-```env
-TURNSTILE_SITE_KEY=0x4AAAAAAA...
-TURNSTILE_SECRET_KEY=0x4AAAAAAA...
-```
-
-The challenge renders on the sign-in page and is verified server-side against Cloudflare
-before the password is ever checked. Leave either value empty and the challenge is skipped
-entirely — no Cloudflare account needed for LAN use. If Cloudflare can't be reached, the
-login fails closed rather than waving people through.
-
-### Forgot the password
-
-There's no reset link, but the account row is yours to delete — remove the database and the
-next start runs the setup wizard again:
-
-```bash
-docker compose down
-sudo rm /path/to/homepage/config/.homepage-gui/homepage-gui.db
-docker compose up -d
-```
-
-Your `services.yaml`, backups and uploaded icons are untouched by this.
-
-### Notes on the session
-
-- The session cookie is `HttpOnly` and `SameSite=Lax`, signed with `SECRET_KEY` (generated
-  and persisted in `DATA_DIR` when unset, so sign-ins survive restarts).
-- **Keep me signed in** issues a long-lived remember cookie; leave it unticked and the
-  session ends with the browser.
-- Writes (`POST`/`PUT`/`PATCH`/`DELETE`) carry a per-session CSRF token — as a hidden
-  `_csrf` field in forms, or an `X-CSRF` header from the editor's own API calls. If you
-  script against the API, read the token from the `<meta name="csrf">` tag on any page and
-  send it in that header, reusing the same cookie jar.
-- `/api/health` stays reachable without a session for container health checks, but reports
-  nothing beyond `{"ok": true}` until you sign in.
-- If you expose the GUI beyond your LAN, put it behind HTTPS — over plain HTTP the session
-  cookie travels in the clear.
-
-## Using the app
-
-- **Add a section** — the `+` in the sidebar, or drag the "Section" block onto the canvas.
-- **Add a service** — a section's `+`, or drag the "Service" block into a section.
-- **Edit** — click ✎ on a card (or double-click it) to open the editor; set fields and pick
-  an icon. Use **Advanced (YAML)** for widgets and other keys.
-- **Reorder / move** — drag the ⠿ handles; drag services across sections.
-- **Sort a section** — the ⇅ button (toggles A→Z / Z→A).
-- **Preview** — see the exact YAML before saving.
-- **Save** — `Ctrl/Cmd+S` or the Save button. A backup is taken automatically.
-- **Backups** — open the Backups dialog to restore a previous version.
-- **Change the file** — click the path under the title in the header to reopen the
-  connection picker (see [Finding your `services.yaml`](#finding-your-servicesyaml)).
-- **About** — click the version in the sidebar footer for links to the project website, the
-  source, Homepage itself, and the full release notes.
-
-## Custom icon uploads & the Homepage restart
-
-In the icon chooser, the **My Uploads** tab lets you upload **PNG/SVG** icons (button or
-drag-and-drop). They're saved to the shared icons folder and referenced as `/icons/<file>`.
-Because Homepage only reads `public/icons` at startup, **new uploads require a Homepage
-restart** — use the **Restart Homepage** button in the sidebar (it restarts the
-`HOMEPAGE_CONTAINER` via the Docker socket). Workflow: upload → select the icon for a
-service → **Save** → **Restart Homepage**.
-
-## Backups
-
-Every save and restore first writes a timestamped copy to a `.homepage-gui-backups/`
-dot-folder beside your `services.yaml` (Homepage ignores dot-folders). Set `BACKUP_DIR` to
-pin them somewhere fixed instead; otherwise they follow the file if you change it. Backups older
-than `KEEP_BACKUP_DAYS` (default **14**) are purged automatically, with `KEEP_BACKUPS`
-(default 40) as a hard cap. Purging runs on each save and whenever the page or Backups dialog
-loads. Restore or inspect any backup from the **Backups** dialog.
+1. **Welcome:** a reminder that this edits an existing Homepage install.
+2. **Create the admin account:** username and password (8 characters or more).
+   This is the only account.
+3. **Connect to Homepage:** the files it found, each with why it turned up, its
+   path on the host, and whether it's writable. The likeliest one is selected.
+4. **You're all set:** confirms the file it will write to, so a bad mount shows
+   up here rather than on your first save.
 
 ## Updating
 
 ```bash
-cd homepage-gui
-docker compose pull        # fetch the latest image
-docker compose up -d       # recreate the container
+docker compose pull && docker compose up -d
 ```
 
-To pin a version, set `IMAGE=hyprlab/homepage-gui:1.0.0` in `.env`.
+To pin a version, set `IMAGE=hyprlab/homepage-gui:1.2.0` in `.env`. Existing
+installs keep their settings; the wizard only runs when there's no account yet.
 
-Existing installs keep working exactly as configured — the wizard only runs when there's no
-account yet, so you won't be asked about paths again. The file picker is still there when
-you want it: click the path in the header.
+## Documentation
 
-## How icons render
-
-Icon previews and search use public CDNs (the Iconify API and jsDelivr), so the browser you
-edit from needs internet access — the same CDNs Homepage itself uses for dashboard icons.
-Core editing and saving work fully offline; only icon search/preview needs the network.
-
-## Release notes
-
-See [CHANGELOG.md](CHANGELOG.md), or click the version number in the app's sidebar footer for
-in-app release notes (both read from the same source).
-
-## Building from source / development
-
-Build and run the image locally instead of pulling:
-
-```bash
-docker compose up -d --build
-```
-
-Run the Flask app directly (without Docker) for development:
-
-```bash
-pip install -r requirements.txt
-HOMEPAGE_CONFIG_DIR=/path/to/homepage/config \
-ICONS_DIR=/path/to/homepage/icons \
-DATA_DIR=./devdata \
-python app.py            # serves on http://localhost:5000
-```
-
-The first run drops you in the setup wizard. `DATA_DIR` keeps the dev account database out
-of your real config directory; delete that folder to start over. Turnstile stays off unless
-you set the two `TURNSTILE_*` variables.
-
-**Stack:** Flask + Flask-Login + SQLAlchemy + PyYAML + gunicorn (backend); vanilla JS +
-SortableJS + js-yaml (frontend); bundled [Inter](https://rsms.me/inter/) (SIL OFL). No build
-step; the only database is a single-table SQLite file holding the admin account.
-
-## Limitations
-
-- Comments in `services.yaml` (other than the standard header) are not preserved — the file
-  is regenerated from the parsed structure. The previous version is always backed up first.
-- Group-level settings (a section whose value is a mapping rather than a list of services)
-  are shown read-only and preserved verbatim; edit those via **Preview**/raw if needed.
+- [Documentation](docs/DOCUMENTATION.md): finding `services.yaml`,
+  configuration, the sign-in, backups, icons, and running from source.
+- [Changelog](CHANGELOG.md), also shown in the app: click the version in the
+  sidebar footer.
+- [Contributing](docs/CONTRIBUTING.md) and [releasing](docs/RELEASING.md).
 
 ## AI notice
 
-Homepage GUI is built by a human maintainer working with generative AI as a development tool:
+Homepage GUI is built by a human maintainer working with generative AI as a
+development tool:
 
-- **Code** — the large majority of the Python and JavaScript in this repository was written with Anthropic's Claude (via Claude Code), working from the maintainer's direction. The maintainer decides what gets built, reviews the results, tests every release, and signs off on everything that ships.
-- **Text** — documentation, release notes, and in-app copy are largely AI-drafted and human-edited.
-- **The app itself contains no AI.** Homepage GUI has no AI features and makes no requests to AI services — it only reads and writes the services.yaml on your own server. AI was used to *build* the app, not to run it.
+- **Code:** the large majority of the Python and JavaScript in this repository
+  was written with Anthropic's Claude (via Claude Code), working from the
+  maintainer's direction. The maintainer decides what gets built, reviews the
+  results, tests every release, and signs off on everything that ships.
+- **Text:** documentation, release notes, and in-app copy are largely
+  AI-drafted and human-edited.
+- **The app itself contains no AI.** Homepage GUI has no AI features and makes
+  no requests to AI services; it only reads and writes the `services.yaml` on
+  your own server. AI was used to build the app, not to run it.
 
-Bug reports and pull requests are welcome from humans and their AI tools alike; everything merged gets the same human review.
+Bug reports and pull requests are welcome from humans and their AI tools
+alike; everything merged gets the same human review.
 
 ## License
 
-Licensed under the **GNU Affero General Public License v3.0** — see [LICENSE](LICENSE).
-Because Homepage GUI is network-served software, AGPL §13 requires that users who interact
-with a modified version over a network can obtain its corresponding source. The in-app
-**Source** link and `SOURCE_URL` exist for this — point them at your fork if you modify it.
+Licensed under the **GNU Affero General Public License v3.0**; see
+[LICENSE](LICENSE). Because Homepage GUI is network-served software, AGPL §13
+requires that people who use a modified version over a network can get its
+source. The in-app **Source** link and `SOURCE_URL` exist for this: point them
+at your fork if you modify it.
