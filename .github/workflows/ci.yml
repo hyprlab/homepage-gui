@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "stable-*"]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Documentation
+        run: python tools/check-docs.py
+      - name: Commit messages
+        if: github.event_name == 'pull_request'
+        run: |
+          # Every commit in the pull request must pass the same hook the
+          # maintainer's clone runs.
+          status=0
+          for sha in $(git rev-list --no-merges ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}); do
+            git log -1 --format=%B "$sha" > /tmp/msg
+            if ! python tools/git-hooks/commit-msg /tmp/msg; then
+              echo "::error::$(git log -1 --format='%h %s' "$sha")"
+              status=1
+            fi
+          done
+          exit $status
+      - name: Image builds
+        run: docker build -t ci-check .
