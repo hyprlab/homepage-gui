@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 This file is the single source of truth for release notes — it is rendered both on
 GitHub and inside the app (click the version in the sidebar footer → **About** → **Release notes**).
 
-## [Unreleased]
+## Unreleased
 
 ## [0.4.1] - 2026-09-15
 

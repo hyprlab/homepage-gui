@@ -1,0 +1,3 @@
+# People whose code, art or translation is in a release: one per line,
+# "Name @github-login". tools/release-notes.sh keeps the @ only for handles
+# listed here. What each person did is in docs/CREDITS.md.

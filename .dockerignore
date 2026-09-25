@@ -13,3 +13,7 @@ temp/
 .env.example
 .github/
 LICENSE
+tools/
+assets/
+data/
+docs/
