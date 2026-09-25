@@ -1,0 +1,33 @@
+#!/bin/sh
+# Last line of defence before anything is published: no commit or annotated
+# tag being pushed may carry AI attribution. One stray trailer puts the tool on
+# the GitHub Contributors panel, and taking it off again means rewriting
+# history. See docs/CONTRIBUTING.md, "Commits".
+set -e
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue
+    if [ "$remote_sha" = "$zero" ]; then
+        range="$local_sha --not --remotes"
+    else
+        range="$remote_sha..$local_sha"
+    fi
+    # shellcheck disable=SC2086
+    hits=$(git log --format='%H %an <%ae>%n%B' $range 2>/dev/null \
+           | grep -inE 'co-authored-by:.*(claude|anthropic)|noreply@anthropic|claude-session:|generated with .*claude' || true)
+    if [ -n "$hits" ]; then
+        echo "pre-push: $remote_ref: AI attribution in the commits being pushed:" >&2
+        echo "$hits" | sed 's/^/          /' >&2
+        status=1
+    fi
+    case "$local_ref" in
+        refs/tags/*)
+            if git cat-file -t "$local_sha" | grep -q tag &&
+               git cat-file -p "$local_sha" | grep -iqE 'claude|anthropic'; then
+                echo "pre-push: $local_ref: the tag message mentions the tool." >&2
+                status=1
+            fi ;;
+    esac
+done
+exit $status

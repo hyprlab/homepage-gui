@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Enforce the commit conventions in docs/CONTRIBUTING.md.
+
+Point a clone at this directory with:
+
+    git config core.hooksPath tools/git-hooks
+
+A worktree or a fresh clone needs that again, or the hook silently does not
+run.
+
+Refused:
+  * AI tool attribution of any kind: the history is the maintainer's, and the
+    AI notice in the README declares the tool once for the whole repository
+  * em dashes (a colon, a comma or a full stop replaces them)
+  * a subject that is not a Conventional Commit, ends in a full stop, or runs
+    past 72 characters
+  * a body over 100 words
+
+Warned about: a body paragraph wrapped over several lines.
+
+Merges, reverts and fixup!/squash!/amend! commits are exempt from the subject
+rules, never from the attribution rule.
+"""
+import re
+import sys
+
+TYPES = ("feat", "fix", "perf", "refactor", "docs", "build", "ci", "test",
+         "style", "chore", "revert")
+# Lower case after the colon, but an acronym (IMAP, OAuth) may lead.
+SUBJECT_RE = re.compile(r"^(%s)(\([a-z0-9._/-]+\))?!?: (?![A-Z][a-z])\S.*$" % "|".join(TYPES))
+EXEMPT_RE = re.compile(r'^(Merge |Revert "|fixup! |squash! |amend! )')
+ATTRIBUTION = [
+    (re.compile(r"^co-authored-by:.*(claude|anthropic|openai|chatgpt|copilot|gemini|\bai\b)", re.I | re.M),
+     "an AI Co-Authored-By trailer"),
+    (re.compile(r"noreply@anthropic\.com", re.I), "an Anthropic address"),
+    (re.compile(r"generated with .*(claude|ai\b)", re.I), 'a "Generated with" footer'),
+    (re.compile(r"^claude-session:", re.I | re.M), "a Claude-Session line"),
+    (re.compile(r"\U0001F916"), "the robot emoji footer"),
+]
+
+
+def fail(message, *hints):
+    print(f"commit-msg: {message}", file=sys.stderr)
+    for hint in hints:
+        print(f"            {hint}", file=sys.stderr)
+    sys.exit(1)
+
+
+def main():
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        raw = handle.read()
+    # Everything below git's scissors line is the verbose diff, not the message.
+    raw = raw.split("# ------------------------ >8 ------------------------")[0]
+    lines = [ln.rstrip() for ln in raw.splitlines() if not ln.startswith("#")]
+    while lines and not lines[0]:
+        lines.pop(0)
+    if not lines:
+        fail("the message is empty.")
+
+    subject, body = lines[0], "\n".join(lines[1:]).strip()
+    message = subject + "\n" + body
+
+    for pattern, what in ATTRIBUTION:
+        if pattern.search(message):
+            fail(f"the message carries {what}.",
+                 "Commits are the maintainer's own. The README's AI notice declares",
+                 "the tool once; a person is still credited with Co-Authored-By.")
+    if "—" in message:
+        fail("the message contains an em dash.", "Use a colon, a comma or a full stop.")
+
+    if EXEMPT_RE.match(subject):
+        sys.exit(0)
+    if not SUBJECT_RE.match(subject):
+        fail(f"the subject is not a Conventional Commit: {subject!r}",
+             "Shape: type(area): summary, lower case after the colon, imperative.",
+             "Types: " + ", ".join(TYPES))
+    if subject.endswith("."):
+        fail("the subject ends with a full stop.")
+    if len(subject) > 72:
+        fail(f"the subject is {len(subject)} characters; the limit is 72, aim nearer 50.")
+
+    if body:
+        words = len(body.split())
+        if words > 100:
+            fail(f"the body is {words} words; the limit is 100.",
+                 "Past that, the detail belongs in docs/ or CHANGELOG.md,",
+                 "or the commit wants splitting.")
+        # GitHub keeps every line break in a body, so text wrapped at 72 wraps
+        # a second time on a phone. Lists and indented blocks are fine.
+        for para in re.split(r"\n\s*\n", body):
+            rows = [r for r in para.splitlines() if r.strip()]
+            if len(rows) > 1 and not any(r.lstrip()[:1] in "-*#0123456789" or r.startswith(" ") for r in rows):
+                print("commit-msg: warning: a body paragraph is wrapped over "
+                      f"{len(rows)} lines. Write each paragraph as one line.", file=sys.stderr)
+                break
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
