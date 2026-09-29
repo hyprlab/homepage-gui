@@ -1,9 +1,10 @@
 # Homepage GUI
 
 A self-hosted, drag-and-drop editor for [Homepage](https://gethomepage.dev)'s
-`services.yaml`. Organize sections and services, edit every field, pick or
-upload icons, and save straight to your live dashboard. It runs in one
-container, behind a sign-in you set up on first start.
+`services.yaml` and `bookmarks.yaml`. Organize sections and services or
+categories and bookmarks, edit every field, pick or upload icons, and save
+straight to your live dashboard. It runs in one container, behind a sign-in
+you set up on first start.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Docker Image](https://img.shields.io/docker/v/hyprlab/homepage-gui?label=docker%20hub&sort=semver)](https://hub.docker.com/r/hyprlab/homepage-gui)
@@ -13,19 +14,22 @@ container, behind a sign-in you set up on first start.
 
 ## What it does
 
-Homepage's `services.yaml` is hand-edited YAML: a list of sections, each with
-services that carry an `icon`, `href`, `description`, `ping` and widgets.
-Homepage GUI edits that file in the browser, on any device on your LAN, and
-writes back to the same file Homepage reads, with a backup before every save.
-Homepage reloads it by itself, so changes appear at once.
+Homepage's `services.yaml` and `bookmarks.yaml` are hand-edited YAML: lists of
+sections or categories, each with entries that carry fields like `icon`,
+`href`, `description` and, for services, `ping` and widgets. Homepage GUI
+edits both files in the browser, on any device on your LAN, and writes back to
+the same files Homepage reads, with a backup before every save. Homepage
+reloads them by itself, so changes appear at once.
 
 ## Features
 
-- **Drag and drop:** reorder sections and services, and move services between
-  sections.
-- **Full service editing:** name, icon, URL, description and `ping` as fields,
-  plus an **Advanced (YAML)** panel that keeps widgets, `server`, `container`
-  and any other keys intact.
+- **Services and bookmarks**, each behind its own tab, with the same editing
+  concept for both.
+- **Drag and drop:** reorder sections/categories and services/bookmarks, and
+  move entries between them.
+- **Full editing:** name, icon, URL, description and, for services, `ping` (or
+  for bookmarks, `abbr` and category) as fields, plus an **Advanced (YAML)**
+  panel that keeps widgets, `server`, `container` and any other keys intact.
 - **Icon chooser** searching Dashboard Icons, Material Design Icons, Font
   Awesome and 200,000 Iconify SVGs at once, plus your own PNG and SVG uploads.
 - **Icon colors** for the sources Homepage can recolor, with a color picker.

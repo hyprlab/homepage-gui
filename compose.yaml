@@ -10,6 +10,9 @@ services:
     user: "0:0"
     environment:
       - HOMEPAGE_CONFIG_DIR=/config
+      # bookmarks.yaml is expected beside services.yaml; uncomment only if
+      # yours lives somewhere else.
+      # - BOOKMARKS_PATH=/config/bookmarks.yaml
       # Backups go in a dot-folder Homepage ignores, next to whichever
       # services.yaml is in use. Uncomment to pin them to one folder instead.
       # - BACKUP_DIR=/config/.homepage-gui-backups
