@@ -107,6 +107,17 @@ html, body {
 }
 .topbar-actions { display: flex; align-items: center; gap: 8px; }
 
+.view-tabs { display: flex; gap: 2px; margin-left: 18px; }
+.view-tab {
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 600;
+  color: var(--text-dim); text-decoration: none;
+  border: 1px solid transparent;
+}
+.view-tab:hover { color: var(--text); background: var(--bg-elev2); }
+.view-tab.active { color: var(--text); background: var(--bg-elev2); border-color: var(--border); }
+
 .badge {
   font-size: 11px;
   padding: 4px 10px;
@@ -340,6 +351,17 @@ html, body {
 .empty-state { text-align: center; padding: 80px 20px; color: var(--muted); }
 .empty-state p { font-size: 16px; margin-bottom: 16px; }
 
+.missing-banner {
+  margin: 0 0 16px;
+  padding: 11px 14px;
+  background: rgba(252, 211, 77, .1);
+  border: 1px solid rgba(252, 211, 77, .35);
+  border-radius: var(--radius-sm);
+  color: #fcd34d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* ---------- Drawer ---------- */
 .drawer-overlay, .modal-overlay {
   position: fixed; inset: 0;
@@ -408,6 +430,8 @@ html, body {
 .color-val { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
 .color-hint { font-size: 12px; color: var(--muted); }
 .icon-color-field.unsupported .color-toggle { opacity: .5; }
+
+.field-error { color: #fca5a5; font-size: 12px; min-height: 14px; }
 
 .advanced { border-top: 1px solid var(--border-soft); padding-top: 12px; }
 .advanced summary { cursor: pointer; font-size: 12px; color: var(--text-dim); font-weight: 600; }
@@ -699,12 +723,15 @@ html, body {
 .conn-field .hint { margin: 0; }
 .conn-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
 
-/* The header path doubles as the button that opens the dialog. */
+/* The header path doubles as the button that opens the dialog — except for
+   bookmarks.yaml, which has no dialog to open (.static: plain text). */
 .brand-text button.path {
   background: none; border: none; padding: 0; cursor: pointer;
   text-align: left; font-family: var(--mono);
 }
 .brand-text button.path:hover { color: var(--text-dim); text-decoration: underline; }
+.brand-text button.path.static { cursor: default; }
+.brand-text button.path.static:hover { color: inherit; text-decoration: none; }
 
 /* ---------- About ---------- */
 .about-modal { width: 520px; }
