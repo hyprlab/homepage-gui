@@ -55,6 +55,7 @@ These are set in `compose.yaml`'s `environment:` (container side) and `.env`
 | --- | --- | --- |
 | `HOMEPAGE_CONFIG_DIR` | `/config` | Directory (inside the container) holding `services.yaml` |
 | `SERVICES_PATH` | `$HOMEPAGE_CONFIG_DIR/services.yaml` | Starting point for the file path; a file chosen in the app wins over it |
+| `BOOKMARKS_PATH` | `$HOMEPAGE_CONFIG_DIR/bookmarks.yaml` | Where `bookmarks.yaml` is read and written; no in-app picker, so set this if it isn't beside `services.yaml` |
 | `BACKUP_DIR` | beside `services.yaml` | Where backups are written; set it to pin them to one folder |
 | `KEEP_BACKUPS` | `40` | Hard cap on the number of backups (`0` is unlimited) |
 | `KEEP_BACKUP_DAYS` | `14` | Purge backups older than this many days (`0` keeps them forever) |
@@ -151,18 +152,28 @@ Your `services.yaml`, backups and uploaded icons are untouched.
 
 ## Using the app
 
-- **Add a section:** the `+` in the sidebar, or drag the Section block onto
-  the canvas.
-- **Add a service:** a section's `+`, or drag the Service block into a
-  section.
+- **Switch between services and bookmarks:** the **Services** / **Bookmarks**
+  tabs in the header. Each is its own page (`/` and `/?view=bookmarks`), so
+  the choice survives a reload or a bookmark of the URL — nothing is kept in
+  browser storage.
+- **Add a section (services) or category (bookmarks):** the `+` in the
+  sidebar, or drag the Section/Category block onto the canvas.
+- **Add a service or bookmark:** a section's `+`, or drag the Service/Bookmark
+  block into one.
 - **Edit:** click ✎ on a card, or double-click it. Use **Advanced (YAML)** for
-  widgets and other keys.
-- **Reorder or move:** drag the ⠿ handles, including across sections.
-- **Sort a section:** the ⇅ button toggles A to Z and Z to A.
+  widgets and other keys. A bookmark's editor also has a **Category** field:
+  pick an existing one or type a new one to move it there.
+- **Reorder or move:** drag the ⠿ handles, including across sections or
+  categories.
+- **Sort a section or category:** the ⇅ button toggles A to Z and Z to A.
 - **Preview:** the exact YAML before saving.
-- **Save:** `Ctrl/Cmd+S` or the Save button. A backup is taken first.
-- **Backups:** restore a previous version from the Backups dialog.
-- **Change the file:** click the path under the title in the header.
+- **Save:** `Ctrl/Cmd+S` or the Save button. A backup is taken first. If
+  `bookmarks.yaml` doesn't exist yet, the first save creates it.
+- **Backups:** restore a previous version from the Backups dialog — each tab
+  has its own, for its own file.
+- **Change the services.yaml file:** click the path under the title in the
+  header (services only; `bookmarks.yaml` is set with `BOOKMARKS_PATH`, see
+  the table above).
 - **About:** click the version in the sidebar footer for the project links and
   the release notes.
 
@@ -200,6 +211,12 @@ the file if you change it. Backups older than `KEEP_BACKUP_DAYS` are purged,
 with `KEEP_BACKUPS` as a hard cap. Purging runs on each save and whenever the
 page or the Backups dialog loads.
 
+`services.yaml` and `bookmarks.yaml` backups share that folder but are named
+`services-<timestamp>.yaml` and `bookmarks-<timestamp>.yaml`, so the two never
+mix: the Backups dialog on each tab only lists and restores its own file's
+history, and `KEEP_BACKUPS`/`KEEP_BACKUP_DAYS` are enforced separately for
+each.
+
 ## How icons render
 
 Icon previews and search use the Iconify API and jsDelivr, the same CDNs
@@ -208,11 +225,11 @@ Editing and saving work offline.
 
 ## Limitations
 
-- Comments in `services.yaml`, other than the standard header, are not kept:
-  the file is regenerated from the parsed structure. The previous version is
-  always backed up first.
-- Group-level settings (a section whose value is a mapping rather than a list
-  of services) are shown read-only and kept verbatim.
+- Comments in `services.yaml` and `bookmarks.yaml`, other than the standard
+  header, are not kept: the file is regenerated from the parsed structure.
+  The previous version is always backed up first.
+- Group-level settings (a section or category whose value is a mapping rather
+  than a list of entries) are shown read-only and kept verbatim.
 
 ## Running from source
 

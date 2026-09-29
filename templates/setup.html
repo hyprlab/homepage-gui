@@ -94,6 +94,9 @@
             writes to:</p>
           <p class="wiz-path"><code id="wiz-path"></code></p>
           <p class="hint" id="wiz-file-note"></p>
+          <p class="wiz-text">Bookmarks (<code>bookmarks.yaml</code>):</p>
+          <p class="wiz-path"><code id="wiz-bookmarks-path"></code></p>
+          <p class="hint" id="wiz-bookmarks-note"></p>
         </div>
         <div class="wiz-nav">
           <a class="btn primary btn-block" href="{{ url_for('index') }}">Open the editor</a>
@@ -171,6 +174,12 @@
       ? "The file will be created on your first save."
       : state.writable
         ? "Found and writable — Homepage picks up changes as soon as you save."
+        : "Found, but this container can't write to it. Check the file's permissions or the mount.";
+    document.getElementById("wiz-bookmarks-path").textContent = state.bookmarks_path;
+    document.getElementById("wiz-bookmarks-note").textContent = !state.bookmarks_exists
+      ? "No bookmarks.yaml yet — it's created on your first save in the Bookmarks tab."
+      : state.bookmarks_writable
+        ? "Found and writable."
         : "Found, but this container can't write to it. Check the file's permissions or the mount.";
     show(3);
   }

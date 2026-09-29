@@ -1,17 +1,63 @@
-/* Homepage GUI — drag-and-drop editor for services.yaml */
+/* Homepage GUI — drag-and-drop editor for services.yaml and bookmarks.yaml */
 (() => {
   "use strict";
 
-  const COMMON = ["icon", "href", "description", "ping"];
+  // ---- View configuration ----
+  // Services and bookmarks share one board: groups of drag-and-drop cards,
+  // an editor drawer, an icon chooser, preview/save/backups. What differs is
+  // which API this talks to, which fields the editor shows, and a handful of
+  // nouns in the UI copy. Everything else below is written against `CFG`
+  // rather than either kind by name.
+  const VIEW = document.body.dataset.view === "bookmarks" ? "bookmarks" : "services";
+  const VIEWS = {
+    services: {
+      itemsKey: "services",
+      itemNoun: "service",
+      itemNounPlural: "services",
+      groupNoun: "section",
+      groupNounPlural: "sections",
+      newGroupName: "New Section",
+      newItemName: "New service",
+      fileName: "services.yaml",
+      commonFields: ["icon", "href", "description", "ping"],
+      api: {
+        config: "/api/config",
+        preview: "/api/preview",
+        backups: "/api/backups",
+        restore: "/api/backups/restore",
+      },
+    },
+    bookmarks: {
+      itemsKey: "bookmarks",
+      itemNoun: "bookmark",
+      itemNounPlural: "bookmarks",
+      groupNoun: "category",
+      groupNounPlural: "categories",
+      newGroupName: "New Category",
+      newItemName: "New bookmark",
+      fileName: "bookmarks.yaml",
+      commonFields: ["abbr", "icon", "href", "description"],
+      api: {
+        config: "/api/bookmarks",
+        preview: "/api/bookmarks/preview",
+        backups: "/api/bookmarks/backups",
+        restore: "/api/bookmarks/backups/restore",
+      },
+    },
+  };
+  const CFG = VIEWS[VIEW];
+  const COMMON = CFG.commonFields;
+
+  const plural = (n, singular, pluralForm) => `${n} ${n === 1 ? singular : pluralForm}`;
 
   // ---- State ----
   let state = { groups: [] };
   let dirty = false;
   let uidCounter = 0;
   const groupById = new Map();
-  const serviceById = new Map();
+  const itemById = new Map();
 
-  let editing = null; // { group, service, isNew }
+  let editing = null; // { group, item, isNew }
   let iconTarget = "field"; // where chosen icon goes (the editor field)
 
   const uid = (p) => `${p}${++uidCounter}`;
@@ -49,7 +95,7 @@
       toast("Session expired — signing you in again…", "err");
       setTimeout(() => {
         window.location.href =
-          "/login?next=" + encodeURIComponent(window.location.pathname);
+          "/login?next=" + encodeURIComponent(window.location.pathname + window.location.search);
       }, 1200);
     }
     return res;
@@ -338,45 +384,69 @@
   // ---- Load / build state ----
   async function loadConfig() {
     try {
-      const res = await fetch("/api/config");
+      const res = await fetch(CFG.api.config);
       const data = await res.json();
       if (!res.ok) {
-        // Nothing at the configured path: open the connection dialog rather
-        // than leaving an empty canvas behind an error toast.
         if (data.missing_file) {
-          toast(data.error, "err");
-          showConnection();
+          if (VIEW === "services") {
+            // Nothing at the configured path: open the connection dialog
+            // rather than leaving an empty canvas behind an error toast.
+            toast(data.error, "err");
+            showConnection();
+            return;
+          }
+          // bookmarks.yaml has no picker of its own — just say so, and let
+          // editing continue from an empty board. The first save creates it.
+          buildState({ groups: [] });
+          render();
+          setDirty(false);
+          showMissingBanner(
+            `No bookmarks.yaml yet at ${data.bookmarks_path}. ` +
+            `Add a ${CFG.groupNoun} and a ${CFG.itemNoun}, then Save to create it.`
+          );
           return;
         }
         throw new Error(data.error || "Failed to load");
       }
+      hideMissingBanner();
       buildState(data);
       render();
       setDirty(false);
-      toast("Loaded services.yaml", "ok");
+      toast("Loaded " + CFG.fileName, "ok");
     } catch (e) {
       toast("Load error: " + e.message, "err");
     }
   }
 
+  function showMissingBanner(text) {
+    const el = $("#missingFileBanner");
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove("hidden");
+  }
+  function hideMissingBanner() {
+    const el = $("#missingFileBanner");
+    if (el) el.classList.add("hidden");
+  }
+
   function buildState(data) {
     groupById.clear();
-    serviceById.clear();
+    itemById.clear();
     state = { groups: [] };
     (data.groups || []).forEach((g) => {
       const gid = uid("g");
       const group = {
         id: gid,
         name: g.name || "",
-        type: g.type || "services",
-        services: [],
+        type: g.type || CFG.itemsKey,
+        items: [],
         raw: g.raw,
       };
-      (g.services || []).forEach((s) => {
-        const sid = uid("s");
-        const svc = { id: sid, name: s.name || "", config: s.config || {} };
-        serviceById.set(sid, svc);
-        group.services.push(svc);
+      (g[CFG.itemsKey] || []).forEach((it) => {
+        const iid = uid("i");
+        const item = { id: iid, name: it.name || "", config: it.config || {} };
+        itemById.set(iid, item);
+        group.items.push(item);
       });
       groupById.set(gid, group);
       state.groups.push(group);
@@ -389,8 +459,8 @@
         if (g.type === "raw") return { name: g.name, type: "raw", raw: g.raw };
         return {
           name: g.name,
-          type: "services",
-          services: g.services.map((s) => ({ name: s.name, config: s.config || {} })),
+          type: CFG.itemsKey,
+          [CFG.itemsKey]: g.items.map((it) => ({ name: it.name, config: it.config || {} })),
         };
       }),
     };
@@ -437,10 +507,10 @@
       list.appendChild(note);
     } else {
       const list = $(".service-list", node);
-      g.services.forEach((s) => list.appendChild(renderService(s)));
+      g.items.forEach((s) => list.appendChild(renderItem(s)));
       updateCount(node, g);
 
-      $(".add-service", node).addEventListener("click", () => addService(g));
+      $(".add-service", node).addEventListener("click", () => addItem(g));
       $(".sort-group", node).addEventListener("click", () => sortGroup(g));
       initListSortable(list);
     }
@@ -449,38 +519,37 @@
     return node;
   }
 
-  function renderService(s) {
+  function renderItem(item) {
     const node = serviceTpl.content.firstElementChild.cloneNode(true);
-    node.dataset.sid = s.id;
-    refreshServiceCard(node, s);
-    $(".edit-svc", node).addEventListener("click", () => openEditor(s));
-    $(".del-svc", node).addEventListener("click", () => deleteService(s));
+    node.dataset.iid = item.id;
+    refreshItemCard(node, item);
+    $(".edit-svc", node).addEventListener("click", () => openEditor(item));
+    $(".del-svc", node).addEventListener("click", () => deleteItem(item));
     node.addEventListener("dblclick", (e) => {
       if (e.target.closest(".icon-btn") || e.target.closest(".drag-handle")) return;
-      openEditor(s);
+      openEditor(item);
     });
     return node;
   }
 
-  function refreshServiceCard(node, s) {
-    $(".svc-name", node).textContent = s.name || "(unnamed)";
-    const cfg = s.config || {};
-    const sub = cfg.href || cfg.description || cfg.ping || "";
+  function refreshItemCard(node, item) {
+    $(".svc-name", node).textContent = item.name || "(unnamed)";
+    const cfg = item.config || {};
+    const sub = cfg.href || cfg.description || cfg.ping || cfg.abbr || "";
     $(".svc-sub", node).textContent = sub;
     $(".svc-sub", node).title = sub;
     renderIcon($(".svc-icon img", node), $(".svc-icon .icon-fallback", node), cfg.icon);
   }
 
-  function cardEl(s) {
-    return $(`.service-card[data-sid="${s.id}"]`);
+  function cardEl(item) {
+    return $(`.service-card[data-iid="${item.id}"]`);
   }
   function groupEl(g) {
     return $(`.group[data-gid="${g.id}"]`);
   }
 
   function updateCount(groupNode, g) {
-    $(".count-pill", groupNode).textContent =
-      g.services.length + (g.services.length === 1 ? " item" : " items");
+    $(".count-pill", groupNode).textContent = plural(g.items.length, CFG.itemNoun, CFG.itemNounPlural);
   }
 
   // ---- Sidebar nav ----
@@ -494,7 +563,7 @@
         <span class="nav-name"></span>
         <span class="nav-count"></span>`;
       $(".nav-name", li).textContent = g.name || "(unnamed)";
-      $(".nav-count", li).textContent = g.type === "raw" ? "⚙" : g.services.length;
+      $(".nav-count", li).textContent = g.type === "raw" ? "⚙" : g.items.length;
       li.addEventListener("click", (e) => {
         if (e.target.closest(".nav-handle")) return;
         const el = groupEl(g);
@@ -512,14 +581,14 @@
 
   function updateTotals() {
     const groups = state.groups.length;
-    const svcs = state.groups.reduce((n, g) => n + (g.services ? g.services.length : 0), 0);
-    $("#statTotals").textContent = `${groups} sections · ${svcs} services`;
+    const items = state.groups.reduce((n, g) => n + (g.items ? g.items.length : 0), 0);
+    $("#statTotals").textContent = `${groups} ${CFG.groupNounPlural} · ${items} ${CFG.itemNounPlural}`;
   }
 
   function refreshNavCounts() {
     state.groups.forEach((g) => {
       const li = $(`#sectionNav li[data-gid="${g.id}"]`);
-      if (li && g.type !== "raw") $(".nav-count", li).textContent = g.services.length;
+      if (li && g.type !== "raw") $(".nav-count", li).textContent = g.items.length;
       const gel = groupEl(g);
       if (gel && g.type !== "raw") updateCount(gel, g);
     });
@@ -554,7 +623,7 @@
 
   function initListSortable(list) {
     const s = Sortable.create(list, {
-      group: "services",
+      group: "items",
       handle: ".drag-handle",
       animation: 150,
       ghostClass: "sortable-ghost",
@@ -562,17 +631,17 @@
       draggable: ".service-card",
       onAdd: (evt) => {
         if (evt.item.classList && evt.item.classList.contains("palette-block")) {
-          // Dropped a palette "Service" block -> create a new service here.
+          // Dropped a palette item block -> create a new item here.
           const gid = evt.to.closest(".group").dataset.gid;
           const g = groupById.get(gid);
           evt.item.remove();
-          const svc = { id: uid("s"), name: "New service", config: {} };
-          serviceById.set(svc.id, svc);
+          const item = { id: uid("i"), name: CFG.newItemName, config: {} };
+          itemById.set(item.id, item);
           syncOrderFromDom();
-          g.services.splice(evt.newIndex, 0, svc);
+          g.items.splice(evt.newIndex, 0, item);
           render();
           setDirty(true);
-          openEditor(svc, true);
+          openEditor(item, true);
         } else {
           syncOrderFromDom();
           refreshNavCounts();
@@ -585,19 +654,19 @@
     listSortables.push(s);
   }
 
-  // Rebuild group/service ordering from the current DOM (handles cross-group moves).
+  // Rebuild group/item ordering from the current DOM (handles cross-group moves).
   function syncOrderFromDom() {
     const newGroups = [];
     $$("#groups .group").forEach((gEl) => {
       const g = groupById.get(gEl.dataset.gid);
       if (!g) return;
-      if (g.type === "services") {
-        const svcs = [];
+      if (g.type !== "raw") {
+        const items = [];
         $$(".service-card", gEl).forEach((sEl) => {
-          const s = serviceById.get(sEl.dataset.sid);
-          if (s) svcs.push(s);
+          const item = itemById.get(sEl.dataset.iid);
+          if (item) items.push(item);
         });
-        g.services = svcs;
+        g.items = items;
       }
       newGroups.push(g);
     });
@@ -607,7 +676,7 @@
 
   // ---- Mutations ----
   function addGroup() {
-    const g = { id: uid("g"), name: "New Section", type: "services", services: [] };
+    const g = { id: uid("g"), name: CFG.newGroupName, type: CFG.itemsKey, items: [] };
     groupById.set(g.id, g);
     state.groups.push(g);
     render();
@@ -622,21 +691,21 @@
   }
 
   function deleteGroup(g) {
-    if (g.services && g.services.length) {
-      if (!confirm(`Delete section "${g.name}" and its ${g.services.length} service(s)?`)) return;
+    if (g.items && g.items.length) {
+      if (!confirm(`Delete ${CFG.groupNoun} "${g.name}" and its ${plural(g.items.length, CFG.itemNoun, CFG.itemNounPlural)}?`)) return;
     }
     state.groups = state.groups.filter((x) => x !== g);
     groupById.delete(g.id);
-    (g.services || []).forEach((s) => serviceById.delete(s.id));
+    (g.items || []).forEach((item) => itemById.delete(item.id));
     render();
     setDirty(true);
   }
 
   function sortGroup(g) {
-    if (g.type === "raw" || !g.services.length) return;
+    if (g.type === "raw" || !g.items.length) return;
     const dir = g._sortDir === "asc" ? -1 : 1;
     g._sortDir = dir === 1 ? "asc" : "desc";
-    g.services.sort(
+    g.items.sort(
       (a, b) =>
         dir *
         (a.name || "").localeCompare(b.name || "", undefined, {
@@ -649,46 +718,67 @@
     if (gel) {
       const list = $(".service-list", gel);
       list.innerHTML = "";
-      g.services.forEach((s) => list.appendChild(renderService(s)));
+      g.items.forEach((item) => list.appendChild(renderItem(item)));
       initListSortable(list);
     }
     setDirty(true);
     toast(`Sorted "${g.name}" ${dir === 1 ? "A→Z" : "Z→A"}`, "info");
   }
 
-  function addService(g) {
-    const svc = { id: uid("s"), name: "New service", config: {} };
-    serviceById.set(svc.id, svc);
-    g.services.push(svc);
+  function addItem(g) {
+    const item = { id: uid("i"), name: CFG.newItemName, config: {} };
+    itemById.set(item.id, item);
+    g.items.push(item);
     const gel = groupEl(g);
     if (gel) {
-      $(".service-list", gel).appendChild(renderService(svc));
+      $(".service-list", gel).appendChild(renderItem(item));
       updateCount(gel, g);
     }
     refreshNavCounts();
     setDirty(true);
-    openEditor(svc, true);
+    openEditor(item, true);
   }
 
-  function deleteService(s) {
-    const g = state.groups.find((x) => x.services && x.services.includes(s));
+  function deleteItem(item) {
+    const g = state.groups.find((x) => x.items && x.items.includes(item));
     if (!g) return;
-    g.services = g.services.filter((x) => x !== s);
-    serviceById.delete(s.id);
-    const el = cardEl(s);
+    g.items = g.items.filter((x) => x !== item);
+    itemById.delete(item.id);
+    const el = cardEl(item);
     if (el) el.remove();
     refreshNavCounts();
     setDirty(true);
   }
 
   // ---- Editor drawer ----
-  function openEditor(s, isNew = false) {
-    const g = state.groups.find((x) => x.services && x.services.includes(s));
-    editing = { group: g, service: s, isNew };
-    $("#editorTitle").textContent = isNew ? "New service" : "Edit service";
-    $("#f_name").value = s.name || "";
-    const cfg = s.config || {};
+  function populateCategoryOptions() {
+    const dl = $("#categoryOptions");
+    if (!dl) return;
+    dl.innerHTML = "";
+    state.groups
+      .filter((g) => g.type !== "raw")
+      .forEach((g) => {
+        const opt = document.createElement("option");
+        opt.value = g.name;
+        dl.appendChild(opt);
+      });
+  }
+
+  function openEditor(item, isNew = false) {
+    const g = state.groups.find((x) => x.items && x.items.includes(item));
+    editing = { group: g, item, isNew };
+    $("#editorTitle").textContent = (isNew ? "New " : "Edit ") + CFG.itemNoun;
+    $("#f_name").value = item.name || "";
+
+    if (VIEW === "bookmarks") {
+      $("#f_category").value = g ? g.name : "";
+      populateCategoryOptions();
+      $("#categoryError").textContent = "";
+    }
+
+    const cfg = item.config || {};
     COMMON.forEach((k) => { $("#f_" + k).value = cfg[k] != null ? cfg[k] : ""; });
+    if ($("#hrefError")) $("#hrefError").textContent = "";
 
     // Advanced = everything not in COMMON.
     const extra = {};
@@ -711,7 +801,30 @@
 
   function applyEditor() {
     if (!editing) return;
-    const s = editing.service;
+    const item = editing.item;
+
+    let targetGroup = editing.group;
+    if (VIEW === "bookmarks") {
+      const cat = $("#f_category").value.trim();
+      if (!cat) {
+        $("#categoryError").textContent = "Category is required.";
+        return;
+      }
+      $("#categoryError").textContent = "";
+      targetGroup = state.groups.find((g) => g.type !== "raw" && g.name === cat);
+      if (!targetGroup) {
+        targetGroup = { id: uid("g"), name: cat, type: CFG.itemsKey, items: [] };
+        groupById.set(targetGroup.id, targetGroup);
+        state.groups.push(targetGroup);
+      }
+    }
+
+    if (VIEW === "bookmarks" && !$("#f_href").value.trim()) {
+      $("#hrefError").textContent = "URL is required.";
+      return;
+    }
+    if ($("#hrefError")) $("#hrefError").textContent = "";
+
     let extra = {};
     const advText = $("#f_advanced").value.trim();
     if (advText) {
@@ -736,20 +849,30 @@
     });
     Object.keys(extra).forEach((k) => { if (!(k in cfg)) cfg[k] = extra[k]; });
 
-    s.name = $("#f_name").value.trim() || "Unnamed";
-    s.config = cfg;
+    item.name = $("#f_name").value.trim() || "Unnamed";
+    item.config = cfg;
 
-    const el = cardEl(s);
-    if (el) refreshServiceCard(el, s);
+    const movedGroup = VIEW === "bookmarks" && targetGroup !== editing.group;
+    if (movedGroup) {
+      editing.group.items = editing.group.items.filter((x) => x !== item);
+      targetGroup.items.push(item);
+      render();
+      setDirty(true);
+      closeEditor();
+      return;
+    }
+
+    const el = cardEl(item);
+    if (el) refreshItemCard(el, item);
     setDirty(true);
     closeEditor();
   }
 
   function deleteFromEditor() {
     if (!editing) return;
-    const s = editing.service;
+    const item = editing.item;
     closeEditor();
-    deleteService(s);
+    deleteItem(item);
   }
 
   function updateEditorIconPreview() {
@@ -820,7 +943,7 @@
   let dashboardList = null;
   let mdiColor = "#3b82f6";
   // Color is opt-in: leave it off so picks carry no color suffix and Homepage
-  // renders its default gradient. Only set when the user ticks "Apply color".
+  // renders its default icon gradient. Only set when the user ticks "Apply color".
   let mdiUseColor = false;
   let searchSeq = 0;
 
@@ -1136,7 +1259,7 @@
     const btn = $("#saveBtn");
     btn.disabled = true;
     try {
-      const res = await fetch("/api/config", {
+      const res = await fetch(CFG.api.config, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(exportPayload()),
@@ -1144,6 +1267,7 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Save failed");
       setDirty(false);
+      hideMissingBanner();
       toast("Saved." + (data.backup ? ` Backup: ${data.backup}` : ""), "ok");
     } catch (e) {
       toast("Save error: " + e.message, "err");
@@ -1154,7 +1278,7 @@
 
   async function showPreview() {
     try {
-      const res = await fetch("/api/preview", {
+      const res = await fetch(CFG.api.preview, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(exportPayload()),
@@ -1170,7 +1294,7 @@
 
   async function showBackups() {
     try {
-      const res = await fetch("/api/backups");
+      const res = await fetch(CFG.api.backups);
       const data = await res.json();
       const items = data.backups || [];
       const note = data.keep_days
@@ -1200,7 +1324,7 @@
   async function restoreBackup(name) {
     if (!confirm(`Restore "${name}"? Your current file will be backed up first, then overwritten.`)) return;
     try {
-      const res = await fetch("/api/backups/restore", {
+      const res = await fetch(CFG.api.restore, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -1290,6 +1414,8 @@
   // Which services.yaml this edits, and which container "Restart Homepage"
   // restarts. Both are detected in the setup wizard; this is where they get
   // changed afterwards (and where a fresh install lands if the file moved).
+  // Services-only: bookmarks.yaml has no picker of its own (see BOOKMARKS_PATH
+  // in the docs), so this dialog is never opened from the bookmarks view.
   let connPicker = null;
 
   async function showConnection() {
@@ -1390,7 +1516,7 @@
     $$("#sectionNav li").forEach((li) => {
       const g = groupById.get(li.dataset.gid);
       if (!g) return;
-      const hay = (g.name + " " + (g.services || []).map((s) => s.name).join(" ")).toLowerCase();
+      const hay = (g.name + " " + (g.items || []).map((s) => s.name).join(" ")).toLowerCase();
       li.classList.toggle("dim", q && !hay.includes(q));
     });
   }
@@ -1413,17 +1539,16 @@
       b.addEventListener("click", () => {
         if (b.dataset.kind === "group") addGroup();
         else {
-          const g = state.groups.find((x) => x.type !== "raw");
-          if (!g) { addGroup(); }
-          const target = state.groups.find((x) => x.type !== "raw");
-          if (target) addService(target);
+          let target = state.groups.find((x) => x.type !== "raw");
+          if (!target) { addGroup(); target = state.groups.find((x) => x.type !== "raw"); }
+          if (target) addItem(target);
         }
       });
     });
     Sortable.create($("#palette"), {
-      group: { name: "services", pull: "clone", put: false },
+      group: { name: "items", pull: "clone", put: false },
       sort: false,
-      draggable: '.palette-block[data-kind="service"]',
+      draggable: '.palette-block[data-kind="item"]',
     });
 
     // Editor
@@ -1468,8 +1593,14 @@
       uploadIconFiles(e.target.files);
       e.target.value = "";
     });
-    $("#restartHomepageBtn").addEventListener("click", restartHomepage);
-    $("#cfgPath").addEventListener("click", showConnection);
+    const restartBtn = $("#restartHomepageBtn");
+    if (restartBtn) restartBtn.addEventListener("click", restartHomepage);
+
+    // The header path only opens a picker for services — bookmarks.yaml has
+    // no in-app connection dialog (see BOOKMARKS_PATH in the docs).
+    if (VIEW === "services") {
+      $("#cfgPath").addEventListener("click", showConnection);
+    }
 
     // About
     $("#aboutBtn").addEventListener("click", openAbout);

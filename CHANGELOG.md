@@ -9,6 +9,25 @@ GitHub and inside the app (click the version in the sidebar footer → **About**
 
 ## Unreleased
 
+### Added
+- **A bookmarks.yaml editor**, alongside the services.yaml one. A **Services** /
+  **Bookmarks** tab in the header switches between them (the choice is a URL,
+  `/` or `/?view=bookmarks`, so it survives a reload). Categories and bookmarks
+  work like sections and services do: drag-and-drop reordering and moves
+  between categories, A-Z/Z-A sort, and the same icon chooser including "My
+  Uploads". The bookmark editor adds one field services don't have: Category,
+  which picks an existing one or creates a new one on save.
+- New `BOOKMARKS_PATH` environment variable, defaulting to `bookmarks.yaml`
+  beside `services.yaml`, analogous to `SERVICES_PATH`.
+- The setup wizard's last step now also shows `bookmarks.yaml`'s path and
+  whether it's writable.
+- Bookmarks get their own timestamped backups and their own Backups dialog,
+  sharing the services backup folder but named so the two never mix
+  (`services-<timestamp>.yaml` vs `bookmarks-<timestamp>.yaml`); the same
+  `KEEP_BACKUPS`/`KEEP_BACKUP_DAYS` purge policy applies to both, independently.
+- A missing `bookmarks.yaml` no longer stops the app: the Bookmarks tab shows
+  a notice and creates the file on the first save.
+
 ## [0.4.1] - 2026-09-15
 
 Documentation only — the app is unchanged from 0.4.0 apart from its version string.
