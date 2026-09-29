@@ -26,7 +26,14 @@ import discovery
 import setup_wizard
 from icon_cache import IconCache, RateLimited
 from models import User, db
-from yaml_store import HEADER, ServicesStore, COMMON_FIELDS
+from yaml_store import (
+    HEADER,
+    BOOKMARKS_HEADER,
+    BookmarksStore,
+    ServicesStore,
+    COMMON_FIELDS,
+    BOOKMARKS_COMMON_FIELDS,
+)
 
 CONFIG_DIR = os.environ.get("HOMEPAGE_CONFIG_DIR", "/config")
 # Where services.yaml lives when nothing has been detected or chosen yet. The
@@ -34,6 +41,11 @@ CONFIG_DIR = os.environ.get("HOMEPAGE_CONFIG_DIR", "/config")
 # install never has to get this right in compose first — see services_path().
 DEFAULT_SERVICES_PATH = os.environ.get(
     "SERVICES_PATH", os.path.join(CONFIG_DIR, "services.yaml")
+)
+# bookmarks.yaml has no discovery step of its own (see discovery.py) — it's
+# expected next to services.yaml, same as Homepage itself expects it.
+DEFAULT_BOOKMARKS_PATH = os.environ.get(
+    "BOOKMARKS_PATH", os.path.join(CONFIG_DIR, "bookmarks.yaml")
 )
 # An explicit BACKUP_DIR pins backups; otherwise they sit in a dot-folder next
 # to services.yaml, so they follow the file if the configured path changes.
@@ -87,6 +99,17 @@ def services_path():
     return settings.get("services_path") or DEFAULT_SERVICES_PATH
 
 
+def bookmarks_path():
+    """The bookmarks.yaml this app reads and writes.
+
+    Unlike services.yaml, there's no in-app picker for this one: it's just
+    BOOKMARKS_PATH, or bookmarks.yaml beside HOMEPAGE_CONFIG_DIR. If you've
+    pointed the services connection somewhere else entirely, set
+    BOOKMARKS_PATH explicitly.
+    """
+    return DEFAULT_BOOKMARKS_PATH
+
+
 def backup_dir_for(path):
     return BACKUP_DIR or os.path.join(
         os.path.dirname(path) or CONFIG_DIR, ".homepage-gui-backups"
@@ -105,6 +128,18 @@ def get_store():
             path, backup_dir_for(path), keep=KEEP_BACKUPS, keep_days=KEEP_BACKUP_DAYS
         )
         _store_cache["store"] = store
+    return store
+
+
+def get_bookmarks_store():
+    """A BookmarksStore bound to whichever path is configured right now."""
+    path = bookmarks_path()
+    store = _store_cache.get("bookmarks_store")
+    if store is None or store.path != path:
+        store = BookmarksStore(
+            path, backup_dir_for(path), keep=KEEP_BACKUPS, keep_days=KEEP_BACKUP_DAYS
+        )
+        _store_cache["bookmarks_store"] = store
     return store
 
 
@@ -287,10 +322,14 @@ def inject_globals():
 
 @app.route("/")
 def index():
+    view = "bookmarks" if request.args.get("view") == "bookmarks" else "services"
     return render_template(
         "index.html",
         common_fields=COMMON_FIELDS,
+        bookmarks_common_fields=BOOKMARKS_COMMON_FIELDS,
         services_path=services_path(),
+        bookmarks_path=bookmarks_path(),
+        view=view,
     )
 
 
@@ -388,6 +427,83 @@ def restore_backup():
 
 
 # ---------------------------------------------------------------------------
+# bookmarks.yaml — same shape of endpoints as services.yaml above, backed by
+# BookmarksStore instead of ServicesStore.
+# ---------------------------------------------------------------------------
+@app.route("/api/bookmarks", methods=["GET"])
+def get_bookmarks():
+    try:
+        return jsonify(get_bookmarks_store().load())
+    except FileNotFoundError:
+        # Not fatal: the UI shows a notice and creates the file on first save.
+        return jsonify(
+            {
+                "error": "No bookmarks.yaml at %s" % bookmarks_path(),
+                "missing_file": True,
+                "bookmarks_path": bookmarks_path(),
+            }
+        ), 404
+    except Exception as exc:  # noqa: BLE001 - surface parse errors to the UI
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/bookmarks", methods=["POST"])
+def save_bookmarks():
+    payload = request.get_json(silent=True)
+    if not payload or "groups" not in payload:
+        return jsonify({"error": "Expected JSON with a 'groups' array"}), 400
+    try:
+        backup = get_bookmarks_store().save(payload)
+        return jsonify({"ok": True, "backup": backup})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/bookmarks/preview", methods=["POST"])
+def preview_bookmarks():
+    """Render the model to YAML text without saving (for the preview pane)."""
+    from yaml_store import serialize_bookmarks
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        return jsonify({"yaml": serialize_bookmarks(payload)})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 400
+
+
+@app.route("/api/bookmarks/backups", methods=["GET"])
+def list_bookmarks_backups():
+    store = get_bookmarks_store()
+    store.prune()  # purge expired backups when the list is opened
+    return jsonify({"backups": store.list_backups(), "keep_days": KEEP_BACKUP_DAYS})
+
+
+@app.route("/api/bookmarks/backups/<name>", methods=["GET"])
+def get_bookmarks_backup(name):
+    try:
+        return jsonify({"name": name, "yaml": get_bookmarks_store().backup_text(name)})
+    except FileNotFoundError:
+        return jsonify({"error": "Backup not found"}), 404
+
+
+@app.route("/api/bookmarks/backups/restore", methods=["POST"])
+def restore_bookmarks_backup():
+    payload = request.get_json(silent=True) or {}
+    name = payload.get("name")
+    if not name:
+        return jsonify({"error": "Expected 'name'"}), 400
+    try:
+        get_bookmarks_store().restore(name)
+        return jsonify({"ok": True})
+    except FileNotFoundError:
+        return jsonify({"error": "Backup not found"}), 404
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+# ---------------------------------------------------------------------------
 # Homepage connection — where services.yaml is, and which container to restart
 # ---------------------------------------------------------------------------
 # Detection walks every mounted filesystem, so a result is worth reusing for a
@@ -413,6 +529,9 @@ def connection_state():
     path = services_path()
     exists = os.path.isfile(path)
     parent = os.path.dirname(path) or "/"
+    b_path = bookmarks_path()
+    b_exists = os.path.isfile(b_path)
+    b_parent = os.path.dirname(b_path) or "/"
     return {
         "services_path": path,
         "host_path": discovery.local_to_host(path, self_mounts()),
@@ -426,6 +545,11 @@ def connection_state():
         # back to HOMEPAGE_CONFIG_DIR/SERVICES_PATH from the environment.
         "chosen_in_app": bool(settings.get("services_path")),
         "default_path": DEFAULT_SERVICES_PATH,
+        # Shown alongside the above in the setup wizard's last step — no
+        # picker of its own, just what BOOKMARKS_PATH currently resolves to.
+        "bookmarks_path": b_path,
+        "bookmarks_exists": b_exists,
+        "bookmarks_writable": os.access(b_path, os.W_OK) if b_exists else os.access(b_parent, os.W_OK),
     }
 
 
