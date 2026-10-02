@@ -9,6 +9,8 @@ GitHub and inside the app (click the version in the sidebar footer → **About**
 
 ## Unreleased
 
+## [1.2.0] - 2026-10-02
+
 ### Changed
 - **The icon chooser lists its sources in a sidebar instead of tabs.** Each source says
   what it holds, and **My uploads** shows how many files you have.
