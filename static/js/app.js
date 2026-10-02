@@ -816,211 +816,395 @@
   }
 
   // ---- Icon chooser ----
-  let activeIconSrc = "all";
+  // `browse` sources list something before anything is typed; the rest wait
+  // for a query. `recolor` sources are single-color glyphs the color control
+  // can tint; `fixed` says why the others can't be.
+  const ICON_SOURCES = {
+    all: {
+      name: "all sources", placeholder: "Search every source…", recolor: true, link: true,
+      idleTitle: "Search every source at once",
+      idleText: "Dashboard Icons, Material, Font Awesome, Simple Icons and over 200,000 SVGs from Iconify.",
+    },
+    dashboard: {
+      name: "Dashboard Icons", placeholder: "Filter Dashboard Icons…", browse: true,
+      fixed: "Dashboard Icons keep their own colors.",
+    },
+    mdi: {
+      name: "Material", placeholder: "Search Material Design Icons…", recolor: true,
+      idleTitle: "Search Material Design Icons",
+      idleText: "Over 7,000 single-color glyphs that Homepage can recolor.",
+    },
+    fa: {
+      name: "Font Awesome", placeholder: "Search Font Awesome…",
+      fixed: "Font Awesome icons keep their own color.",
+      idleTitle: "Search Font Awesome",
+      idleText: "The free solid, regular and brand sets.",
+    },
+    svg: {
+      name: "Any SVG", placeholder: "Search any SVG icon…", recolor: true, link: true,
+      idleTitle: "Search over 200,000 SVG icons",
+      idleText: "Every Iconify icon set. The icon is stored as a direct URL.",
+    },
+    uploads: {
+      name: "your uploads", placeholder: "Filter your uploads…", browse: true,
+      fixed: "Uploads keep their own colors.",
+    },
+  };
+  const ICON_SUGGESTIONS = ["server", "router", "camera", "media", "database", "cloud"];
+
+  function stored(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+  }
+  function store(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) { /* private mode */ }
+  }
+
+  let activeIconSrc = ICON_SOURCES[stored("hg-icon-src")] ? stored("hg-icon-src") : "all";
   let dashboardList = null;
-  let mdiColor = "#3b82f6";
+  let pickColor = "#3b82f6";
   // Color is opt-in: leave it off so picks carry no color suffix and Homepage
-  // renders its default gradient. Only set when the user ticks "Apply color".
-  let mdiUseColor = false;
+  // renders its default gradient. Only set when the user ticks "Recolor results".
+  let pickUseColor = false;
   let searchSeq = 0;
+  let searchTimer = null;
+
+  const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
 
   function openIconPicker() {
     $("#iconOverlay").classList.remove("hidden");
     setIconSrc(activeIconSrc);
-    setTimeout(() => $("#iconSearch").focus(), 30);
+    loadUploads().catch(() => { /* the count just stays hidden */ });
+    setTimeout(() => {
+      const input = $("#iconSearch");
+      input.focus();
+      input.select();
+    }, 30);
   }
-  function closeIconPicker() { $("#iconOverlay").classList.add("hidden"); }
+  function closeIconPicker() {
+    clearTimeout(searchTimer);
+    searchSeq++; // a search still in flight has nowhere to land
+    $("#iconOverlay").classList.add("hidden");
+  }
 
   function setIconSrc(src) {
     activeIconSrc = src;
-    $$("#iconTabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.src === src));
-    $("#mdiColorWrap").classList.toggle("hidden", !["mdi", "svg", "all"].includes(src));
-    $("#freesvgLink").classList.toggle("hidden", src !== "svg" && src !== "all");
+    store("hg-icon-src", src);
+    const meta = ICON_SOURCES[src];
+    $$("#iconSources .src").forEach((b) => {
+      const on = b.dataset.src === src;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+      b.tabIndex = on ? 0 : -1;
+    });
+    $("#iconSearch").placeholder = meta.placeholder;
     $("#uploadControls").classList.toggle("hidden", src !== "uploads");
-    $("#iconSearch").placeholder = src === "uploads" ? "Filter your uploads…" : "Search icons…";
+    $("#freesvgLink").classList.toggle("hidden", !meta.link);
+    $("#recolorBox").classList.toggle("is-off", !meta.recolor);
+    $("#pickColorOn").disabled = !meta.recolor;
+    // Shown unticked where it can't apply; the choice comes back with the source.
+    $("#pickColorOn").checked = meta.recolor && pickUseColor;
+    $("#pickColor").disabled = !meta.recolor || !pickUseColor;
+    $("#recolorNote").textContent = meta.recolor
+      ? (src === "all" ? "Applies to Material, Simple Icons and SVG results." : "")
+      : meta.fixed;
+    const results = $("#iconResults");
+    results.classList.toggle("show-badges", src === "all");
+    // Another source's icons dimmed under a spinner would read as this
+    // source's results, so start from placeholders instead.
+    results.replaceChildren();
     runIconSearch();
   }
 
-  let searchTimer = null;
-  function scheduleIconSearch() {
+  function willFetch(q) {
+    return !!q || !!ICON_SOURCES[activeIconSrc].browse;
+  }
+
+  // The spinner shows on the keystroke, not when the debounce fires, so the
+  // chooser never looks like it ignored what was typed.
+  function scheduleIconSearch(delay = 220) {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(runIconSearch, 220);
+    if (willFetch($("#iconSearch").value.trim())) setIconBusy(true);
+    searchTimer = setTimeout(runIconSearch, delay);
+  }
+
+  function setIconBusy(on) {
+    $(".icon-search").classList.toggle("is-busy", on);
+    const results = $("#iconResults");
+    results.classList.toggle("is-busy", on);
+    if (!on) return;
+    setIconStatus("Searching…");
+    $("#iconEmpty").classList.add("hidden");
+    // Results on screen dim while the next ones load; an empty grid holds
+    // its shape with placeholder tiles.
+    if (!results.querySelector(".icon-cell")) results.replaceChildren(skeletonCells(24));
+  }
+
+  function skeletonCells(n) {
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < n; i++) {
+      const c = document.createElement("div");
+      c.className = "icon-cell is-skel";
+      c.setAttribute("aria-hidden", "true");
+      c.innerHTML = '<span class="cell-art"></span><span class="cell-label"></span>';
+      frag.appendChild(c);
+    }
+    return frag;
+  }
+
+  function setIconStatus(text) {
+    $("#iconStatus").textContent = text;
   }
 
   async function runIconSearch() {
+    clearTimeout(searchTimer);
     const q = $("#iconSearch").value.trim();
+    const src = activeIconSrc;
     const seq = ++searchSeq;
-    const results = $("#iconResults");
-    const status = $("#iconStatus");
-    results.innerHTML = "";
-
-    try {
-      if (activeIconSrc === "uploads") {
-        const res = await fetch("/api/icons");
-        const data = await res.json();
-        if (seq !== searchSeq) return;
-        const icons = (data.icons || []).filter(
-          (it) => !q || it.name.toLowerCase().includes(q.toLowerCase())
-        );
-        if (!icons.length) {
-          status.textContent = q
-            ? "No matching uploads."
-            : "No custom icons yet. Upload a PNG or SVG, then restart Homepage to use them.";
-        } else {
-          status.textContent =
-            `${icons.length} custom icon(s). Select one, then restart Homepage so it serves new files.`;
-        }
-        icons.forEach((it) => addUploadCell(it));
-        return;
-      }
-      if (activeIconSrc === "all") {
-        if (!q) {
-          status.textContent = "Search across Dashboard, MDI, Font Awesome, Simple Icons and any SVG at once.";
-          return;
-        }
-        await ensureDashboardList();
-        const dash = dashboardList
-          .filter((n) => n.toLowerCase().includes(q.toLowerCase()))
-          .slice(0, 24);
-        const icons = await iconifySearch(q, { limit: 120 });
-        if (seq !== searchSeq) return;
-        dash.forEach((n) => addIconCell(n, n.replace(/\.svg$/, ""), "DASH"));
-        icons.forEach((full) => {
-          const [prefix, name] = full.split(":");
-          const mapped = iconifyToHomepage(prefix, name);
-          addIconCell(mapped.value, name, mapped.badge);
-        });
-        status.textContent = `${dash.length + icons.length} result(s) across all sources`;
-      } else if (activeIconSrc === "dashboard") {
-        await ensureDashboardList();
-        const names = dashboardList
-          .filter((n) => !q || n.toLowerCase().includes(q.toLowerCase()))
-          .slice(0, 200);
-        if (seq !== searchSeq) return;
-        status.textContent = `${names.length} dashboard icon(s)${q ? "" : " (type to filter)"}`;
-        // Values are already like "plex.svg", which is what Homepage wants.
-        names.forEach((n) => addIconCell(n, n.replace(/\.svg$/, ""), "DASH"));
-      } else if (activeIconSrc === "mdi") {
-        if (!q) { status.textContent = "Type to search Material Design Icons…"; return; }
-        const icons = await iconifySearch(q, { prefix: "mdi", limit: 120 });
-        if (seq !== searchSeq) return;
-        status.textContent = `${icons.length} MDI result(s)`;
-        icons.forEach((full) => {
-          const name = full.split(":")[1];
-          addIconCell(mdiUseColor ? `mdi-${name}-${mdiColor}` : `mdi-${name}`, name, "MDI");
-        });
-      } else if (activeIconSrc === "fa") {
-        if (!q) { status.textContent = "Type to search Font Awesome (free) icons…"; return; }
-        const sets = [
-          ["fa6-solid", "fas"],
-          ["fa6-regular", "far"],
-          ["fa6-brands", "fab"],
-        ];
-        const all = await Promise.all(
-          sets.map(([p]) => iconifySearch(q, { prefix: p, limit: 48 }))
-        );
-        if (seq !== searchSeq) return;
-        let count = 0;
-        all.forEach((icons, i) => {
-          const [prefix, hpPrefix] = sets[i];
-          icons.forEach((full) => {
-            const name = full.split(":")[1];
-            count++;
-            addIconCell(`${hpPrefix}-${name}`, `${hpPrefix}-${name}`, "FA");
-          });
-        });
-        status.textContent = `${count} Font Awesome result(s)`;
-      } else if (activeIconSrc === "svg") {
-        if (!q) { status.textContent = "Search 200k+ SVG icons (Iconify). Stored as a direct URL; tick Color to override a monochrome icon's color."; return; }
-        const icons = await iconifySearch(q, { limit: 120 });
-        if (seq !== searchSeq) return;
-        const col = mdiUseColor ? mdiColor : null;
-        status.textContent =
-          `${icons.length} SVG result(s) — stored as a direct URL` +
-          (col ? ` recolored ${col}` : "");
-        icons.forEach((full) => {
-          const [prefix, name] = full.split(":");
-          addIconCell(
-            col
-              ? `${ICONIFY}/${prefix}/${name}.svg?color=${encodeURIComponent(col)}`
-              : `${ICONIFY}/${prefix}/${name}.svg`,
-            full,
-            "SVG"
-          );
-        });
-      }
-      if (!results.children.length && q) status.textContent = "No icons found.";
-    } catch (e) {
-      if (seq === searchSeq) status.textContent = "Search error: " + e.message;
+    if (!willFetch(q)) {
+      setIconBusy(false);
+      setIconStatus("");
+      const meta = ICON_SOURCES[src];
+      showIconEmpty(meta.idleTitle, meta.idleText,
+        ICON_SUGGESTIONS.map((s) => [s, () => searchIconsFor(s)]), true);
+      return;
     }
+    setIconBusy(true);
+    let items;
+    try {
+      items = await fetchIconItems(src, q);
+    } catch (e) {
+      if (seq !== searchSeq) return;
+      setIconBusy(false);
+      setIconStatus("");
+      showIconEmpty("The search didn't finish",
+        e.rateLimited
+          ? `${e.message} Wait a minute, then try again. Icons already seen still work.`
+          : `${e.message} Check this host's internet connection, then try again.`,
+        [["Try again", runIconSearch]]);
+      return;
+    }
+    if (seq !== searchSeq) return;
+    setIconBusy(false);
+    fillIconResults(src, q, items, seq);
+  }
+
+  function searchIconsFor(q) {
+    const input = $("#iconSearch");
+    input.value = q;
+    input.focus();
+    runIconSearch();
+  }
+
+  // Every source comes back as the same shape: the value Homepage stores, a
+  // label, the badge for "All sources", and the Iconify id of anything the
+  // color control can retint in place.
+  async function fetchIconItems(src, q) {
+    const ql = q.toLowerCase();
+    const dashItem = (n) => ({ value: n, label: n.replace(/\.svg$/, ""), badge: "DASH" });
+    const fromIconify = (full, map = "hp") => {
+      const [prefix, name] = full.split(":");
+      const m = iconifyToHomepage(prefix, name);
+      return {
+        value: map === "url" ? iconifyUrl(prefix, name) : m.value,
+        label: map === "url" ? full : prefix.startsWith("fa6-") ? m.value : name,
+        badge: map === "url" ? "SVG" : m.badge,
+        prefix, name, map,
+      };
+    };
+
+    if (src === "uploads") {
+      const icons = await loadUploads();
+      return icons
+        .filter((it) => !q || it.name.toLowerCase().includes(ql))
+        .map((it) => ({ value: it.ref, label: it.name, upload: it.name }));
+    }
+    if (src === "dashboard") {
+      await ensureDashboardList();
+      return dashboardList.filter((n) => !q || n.toLowerCase().includes(ql)).slice(0, 200).map(dashItem);
+    }
+    if (src === "all") {
+      const [, icons] = await Promise.all([ensureDashboardList(), iconifySearch(q, { limit: 120 })]);
+      const dash = dashboardList.filter((n) => n.toLowerCase().includes(ql)).slice(0, 24);
+      return dash.map(dashItem).concat(icons.map((full) => fromIconify(full)));
+    }
+    if (src === "mdi") {
+      return (await iconifySearch(q, { prefix: "mdi", limit: 120 })).map((full) => fromIconify(full));
+    }
+    if (src === "fa") {
+      const sets = await Promise.all(
+        ["fa6-solid", "fa6-regular", "fa6-brands"].map((p) => iconifySearch(q, { prefix: p, limit: 48 }))
+      );
+      return sets.flat().map((full) => fromIconify(full));
+    }
+    return (await iconifySearch(q, { limit: 120 })).map((full) => fromIconify(full, "url"));
+  }
+
+  function fillIconResults(src, q, items, seq) {
+    if (!items.length) { showNoIcons(src, q); return; }
+    $("#iconEmpty").classList.add("hidden");
+    const results = $("#iconResults");
+    const current = $("#f_icon").value.trim();
+    let shown = items.length;
+    const frag = document.createDocumentFragment();
+    items.forEach((it, i) => {
+      frag.appendChild(iconCell(it, i, current, () => {
+        // A result that won't render is noise: it was dropped, so keep the
+        // count honest.
+        if (seq !== searchSeq) return;
+        shown--;
+        if (shown) setIconStatus(iconSummary(src, q, shown));
+        else showNoIcons(src, q);
+      }));
+    });
+    results.replaceChildren(frag);
+    results.scrollTop = 0;
+    setIconStatus(iconSummary(src, q, shown));
+  }
+
+  function iconSummary(src, q, n) {
+    if (src === "all") return `${plural(n, "result")} across all sources`;
+    if (src === "uploads") return `${plural(n, "upload")}. Restart Homepage after uploading so it serves new files.`;
+    if (src === "dashboard" && !q) {
+      return `Showing ${n.toLocaleString()} of ${dashboardList.length.toLocaleString()}. Type to filter.`;
+    }
+    if (src === "svg") return `${plural(n, "icon")}, stored as a direct URL`;
+    return `${plural(n, "icon")} in ${ICON_SOURCES[src].name}`;
+  }
+
+  function showNoIcons(src, q) {
+    setIconStatus("");
+    if (src === "uploads" && !q) {
+      showIconEmpty("No uploads yet",
+        "Drop PNG or SVG files here, or upload them. Restart Homepage afterwards so it serves them.",
+        [["⤓ Upload PNG or SVG", () => $("#iconUpload").click()]]);
+    } else if (src === "all") {
+      showIconEmpty(`Nothing matches “${q}”`, "Try a shorter or more general word.");
+    } else {
+      showIconEmpty(`Nothing matches “${q}” in ${ICON_SOURCES[src].name}`,
+        "Another source may have it.",
+        [["Search all sources", () => setIconSrc("all")]]);
+    }
+  }
+
+  // actions: [[label, onClick], …], shown as buttons or, for suggestions, chips.
+  function showIconEmpty(title, text, actions = [], chips = false) {
+    $("#iconResults").replaceChildren();
+    $("#iconEmptyTitle").textContent = title;
+    $("#iconEmptyText").textContent = text;
+    const box = $("#iconEmptyActions");
+    box.replaceChildren();
+    if (chips && actions.length) {
+      const lead = document.createElement("span");
+      lead.className = "chip-lead";
+      lead.textContent = "Try";
+      box.appendChild(lead);
+    }
+    actions.forEach(([label, fn]) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = chips ? "chip" : "btn ghost sm";
+      b.textContent = label;
+      b.addEventListener("click", fn);
+      box.appendChild(b);
+    });
+    $("#iconEmpty").classList.remove("hidden");
   }
 
   // The cell previews the value it would store, so what you see is what the
-  // editor gets — colour included.
-  function addIconCell(value, label, badge) {
+  // editor gets, color included.
+  function iconCell(it, i, current, onDrop) {
     const cell = document.createElement("div");
     cell.className = "icon-cell";
-    cell.title = value;
-    if (badge) {
+    cell.tabIndex = 0;
+    cell.setAttribute("role", "button");
+    cell.dataset.value = it.value;
+    cell.title = it.value;
+    cell.style.setProperty("--i", Math.min(i, 40));
+    if (it.prefix) {
+      cell.dataset.prefix = it.prefix;
+      cell.dataset.name = it.name;
+      cell.dataset.map = it.map;
+    }
+    markCurrent(cell, current);
+    if (it.badge) {
       const b = document.createElement("span");
-      b.className = "cell-badge b-" + badge.toLowerCase();
-      b.textContent = badge;
+      b.className = "cell-badge b-" + it.badge.toLowerCase();
+      b.textContent = it.badge;
       cell.appendChild(b);
     }
+    if (it.upload) {
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "cell-del";
+      del.textContent = "✕";
+      del.title = "Delete this upload";
+      del.dataset.name = it.upload;
+      cell.appendChild(del);
+    }
     const art = document.createElement("span");
-    art.className = "cell-art";
+    art.className = "cell-art is-loading";
     const img = document.createElement("img");
     img.loading = "lazy";
-    img.alt = label;
+    img.alt = it.label;
     const fb = document.createElement("span");
     fb.className = "icon-fallback";
     fb.textContent = "?";
-    art.appendChild(img);
-    art.appendChild(fb);
+    art.append(img, fb);
     const lab = document.createElement("span");
     lab.className = "cell-label";
-    lab.textContent = label;
-    cell.appendChild(art);
-    cell.appendChild(lab);
-    cell.addEventListener("click", () => chooseIcon(value));
-    $("#iconResults").appendChild(cell);
-    // A result that won't render is noise — drop it rather than show a "?" grid.
-    renderIcon(img, fb, value).then((ok) => { if (!ok) cell.remove(); });
+    lab.textContent = it.label;
+    cell.append(art, lab);
+    renderIcon(img, fb, it.value).then((ok) => {
+      art.classList.remove("is-loading");
+      // An upload that won't draw stays, with its "?", so it can be deleted.
+      if (!ok && !it.upload) { cell.remove(); onDrop(); }
+    });
+    return cell;
   }
 
-  function addUploadCell(item) {
-    const cell = document.createElement("div");
-    cell.className = "icon-cell";
-    cell.title = item.ref;
+  function markCurrent(cell, current) {
+    const on = !!current && cell.dataset.value === current;
+    cell.classList.toggle("is-current", on);
+    if (on) cell.setAttribute("aria-current", "true");
+    else cell.removeAttribute("aria-current");
+  }
 
-    const del = document.createElement("button");
-    del.className = "cell-del";
-    del.textContent = "✕";
-    del.title = "Delete this upload";
-    del.addEventListener("click", (e) => {
-      e.stopPropagation();
-      deleteUpload(item.name);
+  // Recoloring rewrites each cell's value and tints its inline SVG: the
+  // glyphs are already on screen, so there is nothing to fetch again.
+  function recolorIconCells() {
+    const current = $("#f_icon").value.trim();
+    $$("#iconResults .icon-cell[data-prefix]").forEach((cell) => {
+      const { prefix, name, map } = cell.dataset;
+      const value = map === "url" ? iconifyUrl(prefix, name) : iconifyToHomepage(prefix, name).value;
+      cell.dataset.value = value;
+      cell.title = value;
+      const svg = $(".cell-art svg", cell);
+      if (svg) svg.style.color = (resolveIcon(value) || {}).color || "";
+      markCurrent(cell, current);
     });
-    cell.appendChild(del);
+  }
 
-    const art = document.createElement("span");
-    art.className = "cell-art";
-    const img = document.createElement("img");
-    img.loading = "lazy";
-    img.alt = item.name;
-    const fb = document.createElement("span");
-    fb.className = "icon-fallback";
-    fb.textContent = "?";
-    art.appendChild(img);
-    art.appendChild(fb);
-    const lab = document.createElement("span");
-    lab.className = "cell-label";
-    lab.textContent = item.name;
-    cell.appendChild(art);
-    cell.appendChild(lab);
-    renderIcon(img, fb, item.ref); // served by this app at /icons/<name>
-    cell.addEventListener("click", () => chooseIcon(item.ref));
-    $("#iconResults").appendChild(cell);
+  function moveIconFocus(from, key) {
+    const cells = $$("#iconResults .icon-cell:not(.is-skel)");
+    const i = cells.indexOf(from);
+    const cols = Math.max(1, cells.filter((c) => c.offsetTop === cells[0].offsetTop).length);
+    const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[key];
+    const j = i + step;
+    if (j < 0) { $("#iconSearch").focus(); return; }
+    const next = cells[Math.min(j, cells.length - 1)];
+    next.focus();
+    next.scrollIntoView({ block: "nearest" });
+  }
+
+  async function loadUploads() {
+    const res = await fetch("/api/icons");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not list your uploads.");
+    const icons = data.icons || [];
+    const count = $("#uploadsCount");
+    count.textContent = icons.length;
+    count.classList.toggle("hidden", !icons.length);
+    return icons;
   }
 
   async function uploadIconFiles(files) {
@@ -1031,6 +1215,10 @@
       toast("Only PNG or SVG files are allowed", "err");
       return;
     }
+    const btn = $("#iconUploadBtn");
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Uploading…";
     let ok = 0;
     for (const file of list) {
       const fd = new FormData();
@@ -1044,12 +1232,13 @@
         toast(`Upload failed (${file.name}): ${e.message}`, "err");
       }
     }
+    btn.disabled = false;
+    btn.textContent = label;
     if (ok) {
-      toast(
-        `Uploaded ${ok} icon(s). Restart Homepage to make them available.`,
-        "ok"
-      );
-      if (activeIconSrc === "uploads") runIconSearch();
+      toast(`Uploaded ${plural(ok, "icon")}. Restart Homepage to make them available.`, "ok");
+      // Files can be dropped while another source is showing; land on them.
+      $("#iconSearch").value = "";
+      setIconSrc("uploads");
     }
   }
 
@@ -1090,7 +1279,7 @@
   // The chooser's color control recolors monochrome sources (MDI, Simple Icons,
   // and generic SVGs); Font Awesome / dashboard icons keep their fixed color.
   function iconifyToHomepage(prefix, name) {
-    const col = mdiUseColor ? mdiColor : null;
+    const col = pickUseColor ? pickColor : null;
     if (prefix === "mdi") {
       return { value: col ? `mdi-${name}-${col}` : `mdi-${name}`, badge: "MDI" };
     }
@@ -1100,10 +1289,13 @@
     if (prefix === "simple-icons") {
       return { value: col ? `si-${name}-${col}` : `si-${name}`, badge: "SI" };
     }
-    const url = col
-      ? `${ICONIFY}/${prefix}/${name}.svg?color=${encodeURIComponent(col)}`
-      : `${ICONIFY}/${prefix}/${name}.svg`;
-    return { value: url, badge: "SVG" };
+    return { value: iconifyUrl(prefix, name), badge: "SVG" };
+  }
+
+  // Any Iconify icon as a direct SVG URL, recolored when the control is on.
+  function iconifyUrl(prefix, name) {
+    const url = `${ICONIFY}/${prefix}/${name}.svg`;
+    return pickUseColor ? `${url}?color=${encodeURIComponent(pickColor)}` : url;
   }
 
   function chooseIcon(value) {
@@ -1127,7 +1319,11 @@
     if (prefix) u += `&prefix=${encodeURIComponent(prefix)}`;
     const res = await fetch(u);
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Icon search failed");
+    if (!res.ok) {
+      const err = new Error(data.error || "Icon search failed.");
+      err.rateLimited = !!data.rateLimited;
+      throw err;
+    }
     return data.icons || [];
   }
 
@@ -1448,18 +1644,53 @@
     $("#iconOverlay").addEventListener("click", (e) => {
       if (e.target.id === "iconOverlay") closeIconPicker();
     });
-    $$("#iconTabs .tab").forEach((t) =>
-      t.addEventListener("click", () => setIconSrc(t.dataset.src))
-    );
-    $("#iconSearch").addEventListener("input", scheduleIconSearch);
-    $("#mdiColorOn").addEventListener("change", (e) => {
-      mdiUseColor = e.target.checked;
-      $("#mdiColor").disabled = !mdiUseColor;
-      runIconSearch();
+    const sources = $$("#iconSources .src");
+    sources.forEach((b, i) => {
+      b.addEventListener("click", (e) => {
+        if (b.dataset.src !== activeIconSrc) setIconSrc(b.dataset.src);
+        // A mouse pick hands the keyboard back to the search; arrow keys
+        // stay in the list.
+        if (e.detail) $("#iconSearch").focus();
+      });
+      b.addEventListener("keydown", (e) => {
+        const d = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+        if (!d) return;
+        e.preventDefault();
+        const next = sources[(i + d + sources.length) % sources.length];
+        next.focus();
+        next.click();
+      });
     });
-    $("#mdiColor").addEventListener("input", (e) => {
-      mdiColor = e.target.value;
-      if (mdiUseColor) runIconSearch();
+    const search = $("#iconSearch");
+    search.addEventListener("input", () => scheduleIconSearch());
+    search.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); runIconSearch(); }
+      else if (e.key === "ArrowDown") {
+        const first = $("#iconResults .icon-cell:not(.is-skel)");
+        if (first) { e.preventDefault(); first.focus(); }
+      }
+    });
+    const results = $("#iconResults");
+    results.addEventListener("click", (e) => {
+      const del = e.target.closest(".cell-del");
+      if (del) { deleteUpload(del.dataset.name); return; }
+      const cell = e.target.closest(".icon-cell:not(.is-skel)");
+      if (cell) chooseIcon(cell.dataset.value);
+    });
+    results.addEventListener("keydown", (e) => {
+      const cell = e.target.closest(".icon-cell");
+      if (!cell || e.target.closest(".cell-del")) return;
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); chooseIcon(cell.dataset.value); }
+      else if (e.key.startsWith("Arrow")) { e.preventDefault(); moveIconFocus(cell, e.key); }
+    });
+    $("#pickColorOn").addEventListener("change", (e) => {
+      pickUseColor = e.target.checked;
+      $("#pickColor").disabled = !pickUseColor;
+      recolorIconCells();
+    });
+    $("#pickColor").addEventListener("input", (e) => {
+      pickColor = e.target.value;
+      if (pickUseColor) recolorIconCells();
     });
 
     // Uploads
@@ -1480,19 +1711,23 @@
     $("#aboutNotes").addEventListener("toggle", (e) => {
       if (e.target.open) loadReleaseNotes();
     });
-    // Drag-and-drop upload onto the results area while on the Uploads tab.
-    const results = $("#iconResults");
-    results.addEventListener("dragover", (e) => {
-      if (activeIconSrc !== "uploads") return;
+    // Files dropped anywhere on the results pane upload, whichever source
+    // is showing.
+    const pane = $("#iconPane");
+    const hasFiles = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
+    pane.addEventListener("dragover", (e) => {
+      if (!hasFiles(e)) return;
       e.preventDefault();
-      results.classList.add("dropzone");
+      $("#iconDrop").classList.remove("hidden");
     });
-    results.addEventListener("dragleave", () => results.classList.remove("dropzone"));
-    results.addEventListener("drop", (e) => {
-      if (activeIconSrc !== "uploads") return;
+    pane.addEventListener("dragleave", (e) => {
+      if (!pane.contains(e.relatedTarget)) $("#iconDrop").classList.add("hidden");
+    });
+    pane.addEventListener("drop", (e) => {
+      if (!hasFiles(e)) return;
       e.preventDefault();
-      results.classList.remove("dropzone");
-      if (e.dataTransfer && e.dataTransfer.files) uploadIconFiles(e.dataTransfer.files);
+      $("#iconDrop").classList.add("hidden");
+      uploadIconFiles(e.dataTransfer.files);
     });
 
     // Generic modal

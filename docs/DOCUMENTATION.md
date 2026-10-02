@@ -181,10 +181,11 @@ services:
       - /path/to/homepage/icons:/app/public/icons   # matches HOST_ICONS_DIR
 ```
 
-The **My Uploads** tab in the icon chooser takes PNG and SVG files. Homepage
-only reads `public/icons` at startup, so a new upload needs a Homepage restart:
-upload, select the icon for a service, **Save**, then **Restart Homepage** in
-the sidebar.
+**My uploads** in the icon chooser's sidebar takes PNG and SVG files, from its
+upload button or dropped anywhere on the results. Homepage only reads
+`public/icons` at startup, so a new upload needs a Homepage restart: upload,
+select the icon for a service, **Save**, then **Restart Homepage** in the
+sidebar.
 
 The Docker socket mount does two jobs: it lets **Restart Homepage** work, and
 it lets the setup wizard identify your Homepage container and its config

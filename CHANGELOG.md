@@ -9,6 +9,23 @@ GitHub and inside the app (click the version in the sidebar footer → **About**
 
 ## Unreleased
 
+### Changed
+- **The icon chooser lists its sources in a sidebar instead of tabs.** Each source says
+  what it holds, and **My uploads** shows how many files you have.
+- **Searching shows that it's working.** A spinner replaces the magnifier as you type,
+  placeholder tiles hold the grid until results arrive, and each tile shimmers until its
+  icon has loaded. Earlier results stay on screen, dimmed, while a new search runs.
+- The result count matches the icons shown: results that can't be drawn are left out
+  of it.
+- Searches with no matches, failed searches and an empty uploads folder each say what
+  happened and offer a next step, such as searching all sources or trying again.
+- **Recolor results** tints the icons already on screen instead of searching again, and
+  says why it's unavailable for Dashboard Icons, Font Awesome and uploads.
+- The icon a service already uses is marked in the results.
+- Arrow keys move through the sources and the results, Enter picks an icon, and the
+  chooser remembers the last source you used.
+- Files dropped anywhere on the chooser's results upload, whichever source is showing.
+
 ## [0.4.1] - 2026-09-15
 
 Documentation only — the app is unchanged from 0.4.0 apart from its version string.

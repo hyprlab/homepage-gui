@@ -157,34 +157,77 @@
 
   <!-- Icon chooser modal -->
   <div class="modal-overlay hidden" id="iconOverlay">
-    <div class="modal icon-modal" role="dialog" aria-modal="true">
-      <div class="modal-head">
-        <h2>Choose an icon</h2>
+    <div class="modal icon-modal" role="dialog" aria-modal="true" aria-labelledby="iconTitle">
+      <div class="modal-head icon-head">
+        <h2 id="iconTitle">Choose an icon</h2>
+        <div class="icon-search">
+          <svg class="icon-search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input type="search" id="iconSearch" placeholder="Search icons…" autocomplete="off" spellcheck="false" aria-label="Search icons" />
+          <span class="spinner" id="iconSpinner" aria-hidden="true"></span>
+        </div>
         <button class="icon-btn" id="iconModalClose" title="Close">✕</button>
       </div>
-      <div class="icon-tabs" id="iconTabs">
-        <button class="tab active" data-src="all">All sources</button>
-        <button class="tab" data-src="dashboard">Dashboard Icons</button>
-        <button class="tab" data-src="mdi">Material (MDI)</button>
-        <button class="tab" data-src="fa">Font Awesome</button>
-        <button class="tab" data-src="svg">SVG / freesvgicons</button>
-        <button class="tab" data-src="uploads">My Uploads</button>
+      <div class="icon-body">
+        <nav class="icon-sources" id="iconSources" role="tablist" aria-orientation="vertical" aria-label="Icon sources">
+          <div class="src-label">Sources</div>
+          <button type="button" class="src" role="tab" data-src="all">
+            <span class="src-dot b-all"></span>
+            <span class="src-text"><strong>All sources</strong><small>Search everything at once</small></span>
+          </button>
+          <button type="button" class="src" role="tab" data-src="dashboard">
+            <span class="src-dot b-dash"></span>
+            <span class="src-text"><strong>Dashboard Icons</strong><small>App and brand logos</small></span>
+          </button>
+          <button type="button" class="src" role="tab" data-src="mdi">
+            <span class="src-dot b-mdi"></span>
+            <span class="src-text"><strong>Material</strong><small>Material Design Icons</small></span>
+          </button>
+          <button type="button" class="src" role="tab" data-src="fa">
+            <span class="src-dot b-fa"></span>
+            <span class="src-text"><strong>Font Awesome</strong><small>Free solid, regular and brands</small></span>
+          </button>
+          <button type="button" class="src" role="tab" data-src="svg">
+            <span class="src-dot b-svg"></span>
+            <span class="src-text"><strong>Any SVG</strong><small>Over 200,000 from Iconify</small></span>
+          </button>
+          <div class="src-sep"></div>
+          <button type="button" class="src" role="tab" data-src="uploads">
+            <span class="src-dot b-up"></span>
+            <span class="src-text"><strong>My uploads</strong><small>Your PNG and SVG files</small></span>
+            <span class="src-count hidden" id="uploadsCount"></span>
+          </button>
+
+          <div class="src-foot">
+            <div class="recolor" id="recolorBox">
+              <label class="color-toggle">
+                <input type="checkbox" id="pickColorOn" />
+                <span>Recolor results</span>
+              </label>
+              <input type="color" id="pickColor" value="#3b82f6" disabled aria-label="Recolor with" />
+            </div>
+            <p class="src-note" id="recolorNote"></p>
+            <a class="ext-link hidden" id="freesvgLink" href="https://freesvgicons.com/" target="_blank" rel="noopener">Browse freesvgicons.com ↗</a>
+          </div>
+        </nav>
+
+        <section class="icon-pane" id="iconPane" role="tabpanel" aria-labelledby="iconTitle">
+          <div class="icon-pane-head">
+            <span class="icon-status" id="iconStatus" aria-live="polite"></span>
+            <div class="upload-controls hidden" id="uploadControls">
+              <input type="file" id="iconUpload" accept=".png,.svg,image/png,image/svg+xml" multiple hidden />
+              <button type="button" class="btn primary sm" id="iconUploadBtn">⤓ Upload PNG or SVG</button>
+            </div>
+          </div>
+          <div class="icon-results" id="iconResults"></div>
+          <div class="icon-empty hidden" id="iconEmpty">
+            <div class="icon-empty-art" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+            <h3 id="iconEmptyTitle"></h3>
+            <p id="iconEmptyText"></p>
+            <div class="icon-empty-actions" id="iconEmptyActions"></div>
+          </div>
+          <div class="icon-drop hidden" id="iconDrop">Drop PNG or SVG files to upload</div>
+        </section>
       </div>
-      <div class="icon-controls">
-        <input type="search" id="iconSearch" class="filter" placeholder="Search icons…" />
-        <div class="mdi-color hidden" id="mdiColorWrap">
-          <label class="color-toggle"><input type="checkbox" id="mdiColorOn" /> <span>Apply color</span></label>
-          <input type="color" id="mdiColor" value="#3b82f6" disabled />
-        </div>
-        <a class="ext-link hidden" id="freesvgLink" href="https://freesvgicons.com/" target="_blank" rel="noopener">freesvgicons.com ↗</a>
-        <div class="upload-controls hidden" id="uploadControls">
-          <input type="file" id="iconUpload" accept=".png,.svg,image/png,image/svg+xml" multiple hidden />
-          <button class="btn primary sm" id="iconUploadBtn">⤓ Upload PNG / SVG</button>
-          <span class="hint" style="margin:0">Restart Homepage from the sidebar to apply new icons.</span>
-        </div>
-      </div>
-      <div class="icon-results" id="iconResults"></div>
-      <div class="icon-status" id="iconStatus"></div>
     </div>
   </div>
 
