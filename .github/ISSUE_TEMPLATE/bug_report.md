@@ -15,6 +15,4 @@ labels: bug
 
 **Version** (click the version in the sidebar footer)
 
-**The feed or site involved**, if it's about one
-
 **Logs**, if there are any: `docker compose logs --tail 100`
