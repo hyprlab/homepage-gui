@@ -6,7 +6,7 @@ set -e
 
 exclude="$(git rev-parse --git-path info/exclude)"
 if [ -f "$exclude" ] && grep -qx 'CLAUDE.md' "$exclude" &&
-   git diff --cached --name-only | grep -qx 'CLAUDE.md'; then
+   git diff --cached --name-only --diff-filter=ACMR | grep -qx 'CLAUDE.md'; then
     echo "pre-commit: CLAUDE.md is local only and must not be committed." >&2
     echo "            git rm --cached CLAUDE.md" >&2
     exit 1
