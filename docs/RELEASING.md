@@ -1,7 +1,10 @@
 # Releasing
 
-How versions are numbered, when releases happen, and the exact steps.
-Homepage GUI has one channel: stable releases from `main`, plus urgent patches.
+How versions are numbered, when releases happen, and the exact steps. The
+policy is the one every Hyprlab app follows, settled in Hylki after a week of
+twenty stable releases left users tired of update prompts, with one
+difference: Homepage GUI has no beta channel. It has one channel, stable
+releases from `main`, plus urgent patches.
 
 ## Versions: strict SemVer
 
@@ -54,8 +57,9 @@ the tools only read commits since the last tag, so that doesn't matter.
 
 1. **Work lands on `main`.** Commits stay local until the maintainer says to
    push or ship. Every user-visible change adds a line under `## Unreleased`.
-2. **Releases happen only on request** ("ship it"), and batch whatever `main`
-   has gathered.
+2. **Releases are roughly weekly, and only on request.** "Ship it" releases
+   whatever `main` has gathered. There is no beta to ask about or promote, so
+   a bare "ship it" always means a stable release.
 3. **Patches between releases are for urgent fixes only:** a crash, a
    corrupted or lost `services.yaml`, a security hole, an instance that can't
    start or can't sign anyone in, when `main` holds unreleased work that isn't
@@ -65,6 +69,8 @@ the tools only read commits since the last tag, so that doesn't matter.
 ## Before any release
 
 - `python3 tools/check-docs.py` passes. A release does not go out while it fails.
+- The test suite passes, once there is one (`prepare-release.sh` runs it when
+  `tests/` exists).
 - The changelog entries are written in the project's prose style
   ([CONTRIBUTING.md](CONTRIBUTING.md#prose-style)): what changed, from the
   user's side, factual, no marketing and no emoji.
@@ -95,6 +101,7 @@ git push origin main vX.Y.Z
 tools/release-notes.sh X.Y.Z > /tmp/notes-X.Y.Z.md
 gh release create vX.Y.Z --title "vX.Y.Z" --notes-file /tmp/notes-X.Y.Z.md
 tools/publish-image.sh X.Y.Z
+docker compose pull && docker compose up -d     # the maintainer's own instance
 ```
 
 The release title is the version and nothing else: no name, no tagline. The
